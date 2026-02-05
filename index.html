@@ -1,0 +1,2002 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Учет МТБ Колледжа</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .table-row-hover:hover { background-color: #f3f4f6; cursor: pointer; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); overflow-y: auto; }
+        .modal.active { display: flex; align-items: flex-start; justify-content: center; padding: 20px; }
+        .modal-content { background: white; padding: 30px; border-radius: 10px; max-width: 800px; width: 100%; max-height: 90vh; overflow-y: auto; margin-top: 20px; }
+        .modal-lg { max-width: 1000px; }
+        .history-item { border-left: 3px solid #7c3aed; padding-left: 12px; margin-bottom: 12px; }
+        .tab-btn { padding: 8px 16px; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.2s; }
+        .tab-btn:hover { background: #f3f4f6; }
+        .tab-btn.active { border-bottom-color: #7c3aed; color: #7c3aed; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+        const formatDate = (dt) => dt ? new Date(dt).toLocaleDateString('ru-RU') : '-';
+        const formatDateTime = (dt) => {
+            if (!dt) return '-';
+            const d = new Date(dt);
+            return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+        };
+        const formatMoney = (val) => val ? Number(val).toLocaleString() + ' ₽' : '-';
+        const getChangeTypeLabel = (type) => ({
+            'создание': 'Создано', 'перемещение': 'Перемещено', 'смена_ответственного': 'Смена ответственного',
+            'смена_состояния': 'Изменено состояние', 'редактирование': 'Отредактировано',
+            'списание': 'Списано', 'восстановление': 'Восстановлено', 'инвентаризация': 'Инвентаризация'
+        }[type] || type);
+        const getConditionColor = (cond) => ({
+            'Отличное': 'bg-green-100 text-green-800', 'Хорошее': 'bg-blue-100 text-blue-800',
+            'Удовлетворительное': 'bg-yellow-100 text-yellow-800', 'Требует ремонта': 'bg-orange-100 text-orange-800',
+            'Списано': 'bg-red-100 text-red-800'
+        }[cond] || 'bg-gray-100 text-gray-800');
+
+        // === НАВИГАЦИЯ ===
+        const Navbar = ({ currentView, setCurrentView, user, onLogout }) => (
+            <nav className="gradient-bg text-white shadow-lg">
+                <div className="container mx-auto px-4 py-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center space-x-3">
+                            <i className="fas fa-graduation-cap text-2xl"></i>
+                            <h1 className="text-xl font-bold">Учет МТБ Колледжа</h1>
+                        </div>
+                        <div className="flex items-center flex-wrap gap-1">
+                            {[
+                                {key:'dashboard', icon:'fa-home', text:'Главная'},
+                                {key:'equipment', icon:'fa-desktop', text:'Оборудование'},
+                                {key:'premises', icon:'fa-door-open', text:'Помещения'},
+                                {key:'employees', icon:'fa-users', text:'Сотрудники'},
+                                {key:'history', icon:'fa-history', text:'История'},
+                                {key:'inventory', icon:'fa-clipboard-list', text:'Инвентаризация'},
+                                {key:'documents', icon:'fa-file-alt', text:'Документы'},
+                                {key:'writeoffs', icon:'fa-archive', text:'Списание'}
+                            ].map(item => (
+                                <button key={item.key} onClick={() => setCurrentView(item.key)}
+                                    className={`px-3 py-2 rounded-lg text-sm transition ${currentView === item.key ? 'bg-white text-purple-700 font-semibold' : 'hover:bg-purple-600'}`}>
+                                    <i className={`fas ${item.icon} mr-1`}></i><span className="hidden sm:inline">{item.text}</span>
+                                </button>
+                            ))}
+                            <div className="ml-2 pl-2 border-l border-purple-400 flex items-center gap-2">
+                                <span className="text-sm hidden md:inline">
+                                    <i className="fas fa-user mr-1"></i>{user?.full_name || user?.username || 'Гость'}
+                                </span>
+                                <button onClick={onLogout} className="px-3 py-2 rounded-lg text-sm bg-red-500 hover:bg-red-600 transition" title="Выйти">
+                                    <i className="fas fa-sign-out-alt"></i><span className="hidden sm:inline ml-1">Выход</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+        );
+
+        // === КАРТОЧКА СТАТИСТИКИ ===
+        const StatCard = ({ icon, title, value, color }) => (
+            <div className={`${color} text-white rounded-lg shadow-md p-5 card-hover`}>
+                <div className="flex items-center justify-between">
+                    <div><p className="text-sm opacity-90">{title}</p><p className="text-2xl font-bold mt-1">{value}</p></div>
+                    <i className={`${icon} text-3xl opacity-80`}></i>
+                </div>
+            </div>
+        );
+
+        // === ДАШБОРД ===
+        const Dashboard = ({ stats, recentHistory }) => (
+            <div className="fade-in">
+                <h2 className="text-2xl font-bold text-gray-800 mb-6"><i className="fas fa-chart-line mr-2 text-purple-600"></i>Обзор системы</h2>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <StatCard icon="fas fa-desktop" title="Оборудование" value={stats.totalEquipment} color="bg-blue-500" />
+                    <StatCard icon="fas fa-door-open" title="Помещения" value={stats.totalPremises} color="bg-green-500" />
+                    <StatCard icon="fas fa-users" title="Сотрудники" value={stats.totalEmployees} color="bg-yellow-500" />
+                    <StatCard icon="fas fa-ruble-sign" title="Стоимость" value={formatMoney(stats.totalValue)} color="bg-purple-500" />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white rounded-lg shadow p-5">
+                        <h3 className="font-semibold mb-4"><i className="fas fa-exclamation-triangle mr-2 text-orange-500"></i>Требует внимания</h3>
+                        {stats.needsAttention?.length > 0 ? stats.needsAttention.slice(0,5).map((item,i) => (
+                            <div key={i} className="flex justify-between p-2 bg-orange-50 rounded mb-2">
+                                <span className="text-sm">{item.name}</span>
+                                <span className={`text-xs px-2 py-1 rounded ${getConditionColor(item.condition)}`}>{item.condition}</span>
+                            </div>
+                        )) : <p className="text-gray-400 text-center py-4">Всё в порядке</p>}
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-5">
+                        <h3 className="font-semibold mb-4"><i className="fas fa-history mr-2 text-blue-500"></i>Последние изменения</h3>
+                        {recentHistory?.length > 0 ? recentHistory.slice(0,5).map((item,i) => (
+                            <div key={i} className="history-item text-sm">
+                                <div className="flex justify-between">
+                                    <span className="font-medium">{item.equipment_name || item.inventory_number}</span>
+                                    <span className="text-gray-400 text-xs">{formatDateTime(item.change_date)}</span>
+                                </div>
+                                <span className="text-gray-500">{getChangeTypeLabel(item.change_type)}</span>
+                            </div>
+                        )) : <p className="text-gray-400 text-center py-4">Нет записей</p>}
+                    </div>
+                </div>
+                {stats.categoryDistribution?.length > 0 && (
+                    <div className="bg-white rounded-lg shadow p-5 mt-6">
+                        <h3 className="font-semibold mb-4"><i className="fas fa-chart-pie mr-2 text-purple-500"></i>По категориям</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {stats.categoryDistribution.map((cat,i) => (
+                                <div key={i} className="bg-gray-50 p-3 rounded text-center">
+                                    <p className="text-xs text-gray-500 truncate">{cat.name}</p>
+                                    <p className="text-xl font-bold text-purple-600">{cat.count}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+
+        // === СПИСОК ОБОРУДОВАНИЯ ===
+        const EquipmentList = ({ equipment, onAdd, onEdit, onDelete, onViewHistory, loading }) => {
+            const [search, setSearch] = useState('');
+            const [filterCat, setFilterCat] = useState('all');
+            const filtered = equipment.filter(e => {
+                const matchSearch = e.name?.toLowerCase().includes(search.toLowerCase()) || e.inventory_number?.toLowerCase().includes(search.toLowerCase());
+                const matchCat = filterCat === 'all' || e.category === filterCat;
+                return matchSearch && matchCat;
+            });
+            const categories = [...new Set(equipment.map(e => e.category).filter(Boolean))];
+
+            return (
+                <div className="fade-in">
+                    <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                        <h2 className="text-2xl font-bold text-gray-800"><i className="fas fa-desktop mr-2 text-purple-600"></i>Оборудование</h2>
+                        <button onClick={onAdd} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+                            <i className="fas fa-plus mr-2"></i>Добавить
+                        </button>
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-4 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input type="text" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)}
+                                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" />
+                            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="px-4 py-2 border rounded-lg">
+                                <option value="all">Все категории</option>
+                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : (
+                        <div className="bg-white rounded-lg shadow overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-100">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left">Инв. №</th>
+                                        <th className="px-4 py-3 text-left">Название</th>
+                                        <th className="px-4 py-3 text-left hidden md:table-cell">Категория</th>
+                                        <th className="px-4 py-3 text-left hidden md:table-cell">Помещение</th>
+                                        <th className="px-4 py-3 text-left">Состояние</th>
+                                        <th className="px-4 py-3 text-left hidden lg:table-cell">Стоимость</th>
+                                        <th className="px-4 py-3 text-center">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filtered.map(item => (
+                                        <tr key={item.id} className="border-t table-row-hover">
+                                            <td className="px-4 py-3 font-mono text-xs">{item.inventory_number}</td>
+                                            <td className="px-4 py-3">{item.name}</td>
+                                            <td className="px-4 py-3 hidden md:table-cell text-gray-500">{item.category || '-'}</td>
+                                            <td className="px-4 py-3 hidden md:table-cell text-gray-500">{item.location || '-'}</td>
+                                            <td className="px-4 py-3"><span className={`px-2 py-1 rounded text-xs ${getConditionColor(item.condition)}`}>{item.condition || '-'}</span></td>
+                                            <td className="px-4 py-3 hidden lg:table-cell">{formatMoney(item.price)}</td>
+                                            <td className="px-4 py-3 text-center space-x-1">
+                                                <button onClick={() => onViewHistory(item)} className="text-purple-600 hover:text-purple-800 p-1" title="История"><i className="fas fa-history"></i></button>
+                                                <button onClick={() => onEdit(item)} className="text-blue-600 hover:text-blue-800 p-1" title="Редактировать"><i className="fas fa-edit"></i></button>
+                                                <button onClick={() => onDelete(item.id)} className="text-red-600 hover:text-red-800 p-1" title="Удалить"><i className="fas fa-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {filtered.length === 0 && <p className="text-center text-gray-400 py-8">Ничего не найдено</p>}
+                        </div>
+                    )}
+                    <p className="text-sm text-gray-500 mt-2">Показано: {filtered.length} из {equipment.length}</p>
+                </div>
+            );
+        };
+
+        // === СПИСОК ПОМЕЩЕНИЙ ===
+        const PremisesList = ({ premises, onAdd, onEdit, onDelete, onView, loading }) => (
+            <div className="fade-in">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800"><i className="fas fa-door-open mr-2 text-purple-600"></i>Помещения</h2>
+                    <button onClick={onAdd} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+                        <i className="fas fa-plus mr-2"></i>Добавить
+                    </button>
+                </div>
+                {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {premises.map(p => (
+                            <div key={p.id} className="bg-white rounded-lg shadow p-5 card-hover cursor-pointer" onClick={() => onView(p)}>
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <h3 className="font-semibold text-lg">{p.building}, {p.room_number}</h3>
+                                        <p className="text-sm text-gray-500">{p.room_type}</p>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded text-xs ${p.status === 'активное' ? 'bg-green-100 text-green-800' : p.status === 'ремонт' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>{p.status}</span>
+                                </div>
+                                <div className="text-sm text-gray-600 space-y-1">
+                                    {p.area && <p><i className="fas fa-ruler-combined mr-2 text-purple-500 w-4"></i>{p.area} м²</p>}
+                                    {p.capacity && <p><i className="fas fa-users mr-2 text-purple-500 w-4"></i>{p.capacity} чел.</p>}
+                                    <p><i className="fas fa-desktop mr-2 text-purple-500 w-4"></i>{p.equipment_count || 0} ед. оборудования</p>
+                                </div>
+                                <div className="flex gap-2 mt-4" onClick={e => e.stopPropagation()}>
+                                    <button onClick={() => onEdit(p)} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded text-sm">
+                                        <i className="fas fa-edit mr-1"></i>Редактировать
+                                    </button>
+                                    <button onClick={() => onDelete(p.id)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-sm">
+                                        <i className="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+
+        // === СПИСОК СОТРУДНИКОВ ===
+        const EmployeesList = ({ employees, onAdd, onEdit, onDelete, onView, loading }) => (
+            <div className="fade-in">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800"><i className="fas fa-users mr-2 text-purple-600"></i>Сотрудники</h2>
+                    <button onClick={onAdd} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+                        <i className="fas fa-plus mr-2"></i>Добавить
+                    </button>
+                </div>
+                {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {employees.map(emp => (
+                            <div key={emp.id} className="bg-white rounded-lg shadow p-5 card-hover cursor-pointer" onClick={() => onView(emp)}>
+                                <div className="flex items-center mb-3">
+                                    <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mr-3">
+                                        <i className="fas fa-user text-purple-600 text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold">{emp.full_name}</h3>
+                                        <p className="text-sm text-gray-500">{emp.position}</p>
+                                    </div>
+                                </div>
+                                <div className="text-sm text-gray-600 space-y-1">
+                                    {emp.department && <p><i className="fas fa-building mr-2 text-purple-500 w-4"></i>{emp.department}</p>}
+                                    {emp.phone && <p><i className="fas fa-phone mr-2 text-purple-500 w-4"></i>{emp.phone}</p>}
+                                    {emp.email && <p><i className="fas fa-envelope mr-2 text-purple-500 w-4"></i>{emp.email}</p>}
+                                    <p><i className="fas fa-desktop mr-2 text-purple-500 w-4"></i>Ответственный за {emp.equipment_count || 0} ед.</p>
+                                </div>
+                                <div className="flex gap-2 mt-4" onClick={e => e.stopPropagation()}>
+                                    <button onClick={() => onEdit(emp)} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded text-sm">
+                                        <i className="fas fa-edit mr-1"></i>Редактировать
+                                    </button>
+                                    <button onClick={() => onDelete(emp.id)} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-sm">
+                                        <i className="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+
+        // === ИСТОРИЯ ИЗМЕНЕНИЙ ===
+        const HistoryList = ({ history, loading, onFilter }) => {
+            const [filterType, setFilterType] = useState('all');
+            const types = ['создание', 'перемещение', 'смена_ответственного', 'смена_состояния', 'редактирование', 'списание', 'восстановление'];
+            const filtered = filterType === 'all' ? history : history.filter(h => h.change_type === filterType);
+
+            return (
+                <div className="fade-in">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-4"><i className="fas fa-history mr-2 text-purple-600"></i>История изменений</h2>
+                    <div className="bg-white rounded-lg shadow p-4 mb-4">
+                        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="px-4 py-2 border rounded-lg">
+                            <option value="all">Все типы</option>
+                            {types.map(t => <option key={t} value={t}>{getChangeTypeLabel(t)}</option>)}
+                        </select>
+                    </div>
+                    {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : (
+                        <div className="bg-white rounded-lg shadow">
+                            {filtered.length > 0 ? filtered.map((h, i) => (
+                                <div key={i} className="p-4 border-b last:border-b-0 hover:bg-gray-50">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <span className="font-semibold">{h.equipment_name || h.inventory_number}</span>
+                                            <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                                                h.change_type === 'создание' ? 'bg-green-100 text-green-800' :
+                                                h.change_type === 'списание' ? 'bg-red-100 text-red-800' :
+                                                h.change_type === 'перемещение' ? 'bg-blue-100 text-blue-800' :
+                                                'bg-gray-100 text-gray-800'
+                                            }`}>{getChangeTypeLabel(h.change_type)}</span>
+                                        </div>
+                                        <span className="text-sm text-gray-400">{formatDateTime(h.change_date)}</span>
+                                    </div>
+                                    {h.reason && <p className="text-sm text-gray-600 mt-1"><i className="fas fa-comment mr-1"></i>{h.reason}</p>}
+                                    {(h.old_location || h.new_location) && <p className="text-sm text-gray-500 mt-1">{h.old_location || '—'} → {h.new_location || '—'}</p>}
+                                </div>
+                            )) : <p className="text-center text-gray-400 py-8">Нет записей</p>}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // === СПИСАНИЕ ===
+        const WriteOffsList = ({ writeoffs, equipment, employees, loading, onWriteOff, onRestore, onRefresh }) => {
+            const [showModal, setShowModal] = useState(false);
+            const [form, setForm] = useState({ equipment_id: '', reason: '', document_number: '', approved_by: '' });
+            const activeEquipment = equipment.filter(e => e.is_active !== 0);
+
+            const handleSubmit = async () => {
+                if (!form.equipment_id || !form.reason) { alert('Заполните обязательные поля'); return; }
+                const res = await fetch('api/writeoff.php', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(form)
+                }).then(r => r.json());
+                if (res.success) { alert('Оборудование списано'); setShowModal(false); onRefresh(); }
+                else alert('Ошибка: ' + res.error);
+            };
+
+            return (
+                <div className="fade-in">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-2xl font-bold text-gray-800"><i className="fas fa-archive mr-2 text-purple-600"></i>Списанное оборудование</h2>
+                        <button onClick={() => setShowModal(true)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
+                            <i className="fas fa-minus-circle mr-2"></i>Списать
+                        </button>
+                    </div>
+                    {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : (
+                        <div className="bg-white rounded-lg shadow overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-100">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left">Инв. №</th>
+                                        <th className="px-4 py-3 text-left">Название</th>
+                                        <th className="px-4 py-3 text-left hidden md:table-cell">Категория</th>
+                                        <th className="px-4 py-3 text-left">Дата списания</th>
+                                        <th className="px-4 py-3 text-left hidden md:table-cell">Причина</th>
+                                        <th className="px-4 py-3 text-center">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {writeoffs.map(w => (
+                                        <tr key={w.id} className="border-t hover:bg-gray-50">
+                                            <td className="px-4 py-3 font-mono text-xs">{w.inventory_number}</td>
+                                            <td className="px-4 py-3">{w.name}</td>
+                                            <td className="px-4 py-3 hidden md:table-cell text-gray-500">{w.category || '-'}</td>
+                                            <td className="px-4 py-3">{formatDate(w.write_off_date || w.decommissioning_date)}</td>
+                                            <td className="px-4 py-3 hidden md:table-cell text-gray-500 truncate max-w-xs">{w.reason || w.decommissioning_reason || '-'}</td>
+                                            <td className="px-4 py-3 text-center">
+                                                <button onClick={() => onRestore(w.id)} className="text-green-600 hover:text-green-800" title="Восстановить">
+                                                    <i className="fas fa-undo"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {writeoffs.length === 0 && <p className="text-center text-gray-400 py-8">Нет списанного оборудования</p>}
+                        </div>
+                    )}
+
+                    {showModal && (
+                        <div className="modal active">
+                            <div className="modal-content">
+                                <h3 className="text-xl font-bold mb-4">Списание оборудования</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Оборудование *</label>
+                                        <select value={form.equipment_id} onChange={e => setForm({...form, equipment_id: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
+                                            <option value="">Выберите...</option>
+                                            {activeEquipment.map(e => <option key={e.id} value={e.id}>{e.inventory_number} - {e.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Причина списания *</label>
+                                        <textarea value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} className="w-full px-3 py-2 border rounded-lg" rows="3"></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Номер документа</label>
+                                        <input type="text" value={form.document_number} onChange={e => setForm({...form, document_number: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Утвердил</label>
+                                        <select value={form.approved_by} onChange={e => setForm({...form, approved_by: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
+                                            <option value="">Выберите...</option>
+                                            {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 mt-6">
+                                    <button onClick={handleSubmit} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg">Списать</button>
+                                    <button onClick={() => setShowModal(false)} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Отмена</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // === МОДАЛЬНОЕ ОКНО ОБОРУДОВАНИЯ ===
+        const EquipmentModal = ({ isOpen, onClose, onSave, equipment, premises, employees, loading }) => {
+            const [form, setForm] = useState({});
+            useEffect(() => {
+                if (isOpen) setForm(equipment || { inventory_number: '', name: '', category_id: 1, condition_id: 1, premise_id: '', responsible_id: '', manufacturer: '', model: '', purchase_price: '', current_value: '', purchase_date: '' });
+            }, [isOpen, equipment]);
+            if (!isOpen) return null;
+            const handleSubmit = e => { e.preventDefault(); onSave(form); };
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">{equipment ? 'Редактировать' : 'Добавить'} оборудование</h2>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                        </div>
+                        <form onSubmit={handleSubmit}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Инв. номер *</label>
+                                    <input type="text" value={form.inventory_number || ''} onChange={e => setForm({...form, inventory_number: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required disabled={loading} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Название *</label>
+                                    <input type="text" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required disabled={loading} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Категория</label>
+                                    <select value={form.category_id || 1} onChange={e => setForm({...form, category_id: e.target.value})} className="w-full px-3 py-2 border rounded-lg" disabled={loading}>
+                                        <option value="1">Компьютерная техника</option>
+                                        <option value="2">Офисная техника</option>
+                                        <option value="3">Мебель</option>
+                                        <option value="4">Лабораторное оборудование</option>
+                                        <option value="5">Проекционное оборудование</option>
+                                        <option value="6">Аудио-видео техника</option>
+                                        <option value="7">Спортивное оборудование</option>
+                                        <option value="8">Учебное оборудование</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Состояние</label>
+                                    <select value={form.condition_id || 1} onChange={e => setForm({...form, condition_id: e.target.value})} className="w-full px-3 py-2 border rounded-lg" disabled={loading}>
+                                        <option value="1">Отличное</option>
+                                        <option value="2">Хорошее</option>
+                                        <option value="3">Удовлетворительное</option>
+                                        <option value="4">Требует ремонта</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Помещение</label>
+                                    <select value={form.premise_id || ''} onChange={e => setForm({...form, premise_id: e.target.value || null})} className="w-full px-3 py-2 border rounded-lg" disabled={loading}>
+                                        <option value="">Не указано</option>
+                                        {premises.map(p => <option key={p.id} value={p.id}>{p.building}, {p.room_number}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Ответственный</label>
+                                    <select value={form.responsible_id || ''} onChange={e => setForm({...form, responsible_id: e.target.value || null})} className="w-full px-3 py-2 border rounded-lg" disabled={loading}>
+                                        <option value="">Не указан</option>
+                                        {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Производитель</label>
+                                    <input type="text" value={form.manufacturer || ''} onChange={e => setForm({...form, manufacturer: e.target.value})} className="w-full px-3 py-2 border rounded-lg" disabled={loading} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Модель</label>
+                                    <input type="text" value={form.model || ''} onChange={e => setForm({...form, model: e.target.value})} className="w-full px-3 py-2 border rounded-lg" disabled={loading} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Цена покупки</label>
+                                    <input type="number" value={form.purchase_price || ''} onChange={e => setForm({...form, purchase_price: e.target.value})} className="w-full px-3 py-2 border rounded-lg" disabled={loading} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Текущая стоимость</label>
+                                    <input type="number" value={form.current_value || ''} onChange={e => setForm({...form, current_value: e.target.value})} className="w-full px-3 py-2 border rounded-lg" disabled={loading} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Дата покупки</label>
+                                    <input type="date" value={form.purchase_date || ''} onChange={e => setForm({...form, purchase_date: e.target.value})} className="w-full px-3 py-2 border rounded-lg" disabled={loading} />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg" disabled={loading}>
+                                    <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-save'} mr-2`}></i>{loading ? 'Сохранение...' : 'Сохранить'}
+                                </button>
+                                <button type="button" onClick={onClose} className="px-6 py-2 border rounded-lg hover:bg-gray-50" disabled={loading}>Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // === МОДАЛЬНОЕ ОКНО ПОМЕЩЕНИЯ ===
+        const PremiseModal = ({ isOpen, onClose, onSave, premise, employees, loading }) => {
+            const [form, setForm] = useState({});
+            useEffect(() => {
+                if (isOpen) setForm(premise || { room_number: '', building: '', floor: '', room_type: 'аудитория', area: '', capacity: '', status: 'активное', responsible_id: '' });
+            }, [isOpen, premise]);
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">{premise ? 'Редактировать' : 'Добавить'} помещение</h2>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                        </div>
+                        <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium mb-1">Номер *</label><input type="text" value={form.room_number || ''} onChange={e => setForm({...form, room_number: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required /></div>
+                                <div><label className="block text-sm font-medium mb-1">Здание *</label><input type="text" value={form.building || ''} onChange={e => setForm({...form, building: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required /></div>
+                                <div><label className="block text-sm font-medium mb-1">Этаж</label><input type="text" value={form.floor || ''} onChange={e => setForm({...form, floor: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>
+                                <div><label className="block text-sm font-medium mb-1">Тип</label>
+                                    <select value={form.room_type || 'аудитория'} onChange={e => setForm({...form, room_type: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
+                                        <option value="аудитория">Аудитория</option><option value="лаборатория">Лаборатория</option><option value="компьютерный класс">Компьютерный класс</option>
+                                        <option value="кабинет">Кабинет</option><option value="склад">Склад</option><option value="библиотека">Библиотека</option><option value="спортзал">Спортзал</option>
+                                    </select>
+                                </div>
+                                <div><label className="block text-sm font-medium mb-1">Площадь (м²)</label><input type="number" step="0.01" value={form.area || ''} onChange={e => setForm({...form, area: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>
+                                <div><label className="block text-sm font-medium mb-1">Вместимость</label><input type="number" value={form.capacity || ''} onChange={e => setForm({...form, capacity: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>
+                                <div><label className="block text-sm font-medium mb-1">Статус</label>
+                                    <select value={form.status || 'активное'} onChange={e => setForm({...form, status: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
+                                        <option value="активное">Активное</option><option value="ремонт">Ремонт</option><option value="закрыто">Закрыто</option>
+                                    </select>
+                                </div>
+                                <div><label className="block text-sm font-medium mb-1">Ответственный</label>
+                                    <select value={form.responsible_id || ''} onChange={e => setForm({...form, responsible_id: e.target.value || null})} className="w-full px-3 py-2 border rounded-lg">
+                                        <option value="">Не указан</option>
+                                        {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg" disabled={loading}><i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-save'} mr-2`}></i>Сохранить</button>
+                                <button type="button" onClick={onClose} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // === МОДАЛЬНОЕ ОКНО СОТРУДНИКА ===
+        const EmployeeModal = ({ isOpen, onClose, onSave, employee, loading }) => {
+            const [form, setForm] = useState({});
+            useEffect(() => {
+                if (isOpen) setForm(employee || { full_name: '', position: '', department: '', phone: '', email: '' });
+            }, [isOpen, employee]);
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">{employee ? 'Редактировать' : 'Добавить'} сотрудника</h2>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                        </div>
+                        <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
+                            <div className="space-y-4">
+                                <div><label className="block text-sm font-medium mb-1">ФИО *</label><input type="text" value={form.full_name || ''} onChange={e => setForm({...form, full_name: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required /></div>
+                                <div><label className="block text-sm font-medium mb-1">Должность *</label><input type="text" value={form.position || ''} onChange={e => setForm({...form, position: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required /></div>
+                                <div><label className="block text-sm font-medium mb-1">Отдел</label><input type="text" value={form.department || ''} onChange={e => setForm({...form, department: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>
+                                <div><label className="block text-sm font-medium mb-1">Телефон</label><input type="tel" value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>
+                                <div><label className="block text-sm font-medium mb-1">Email</label><input type="email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 border rounded-lg" /></div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg" disabled={loading}><i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-save'} mr-2`}></i>Сохранить</button>
+                                <button type="button" onClick={onClose} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // === ДЕТАЛИ ПОМЕЩЕНИЯ ===
+        const PremiseDetailModal = ({ isOpen, onClose, premiseId }) => {
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            useEffect(() => {
+                if (isOpen && premiseId) {
+                    setLoading(true);
+                    fetch(`api/premise_details.php?id=${premiseId}`).then(r => r.json()).then(res => { if (res.success) setData(res.data); setLoading(false); }).catch(() => setLoading(false));
+                }
+            }, [isOpen, premiseId]);
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content modal-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold"><i className="fas fa-door-open mr-2 text-purple-600"></i>{data?.premise ? `${data.premise.building}, ${data.premise.room_number}` : 'Загрузка...'}</h2>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                        </div>
+                        {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : data && (
+                            <>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                                    <div className="bg-blue-50 p-3 rounded"><p className="text-xs text-gray-500">Тип</p><p className="font-semibold">{data.premise.room_type || '-'}</p></div>
+                                    <div className="bg-green-50 p-3 rounded"><p className="text-xs text-gray-500">Площадь</p><p className="font-semibold">{data.premise.area ? `${data.premise.area} м²` : '-'}</p></div>
+                                    <div className="bg-yellow-50 p-3 rounded"><p className="text-xs text-gray-500">Вместимость</p><p className="font-semibold">{data.premise.capacity ? `${data.premise.capacity} чел.` : '-'}</p></div>
+                                    <div className="bg-purple-50 p-3 rounded"><p className="text-xs text-gray-500">Оборудования</p><p className="font-semibold">{data.statistics.equipment_count} ед.</p></div>
+                                </div>
+                                {data.premise.responsible_name && (
+                                    <div className="bg-gray-50 p-4 rounded mb-4">
+                                        <p className="text-sm text-gray-500 mb-1">Ответственный</p>
+                                        <p className="font-semibold">{data.premise.responsible_name}</p>
+                                        {data.premise.responsible_phone && <p className="text-sm text-gray-600"><i className="fas fa-phone mr-1"></i>{data.premise.responsible_phone}</p>}
+                                    </div>
+                                )}
+                                <h3 className="font-semibold mb-3">Оборудование в помещении ({data.equipment.length})</h3>
+                                <div className="max-h-64 overflow-y-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-100 sticky top-0"><tr><th className="px-3 py-2 text-left">Инв. №</th><th className="px-3 py-2 text-left">Название</th><th className="px-3 py-2 text-left">Состояние</th><th className="px-3 py-2 text-left">Ответственный</th></tr></thead>
+                                        <tbody>
+                                            {data.equipment.map(e => (
+                                                <tr key={e.id} className="border-t"><td className="px-3 py-2 font-mono text-xs">{e.inventory_number}</td><td className="px-3 py-2">{e.name}</td>
+                                                    <td className="px-3 py-2"><span className={`px-2 py-1 rounded text-xs ${getConditionColor(e.condition)}`}>{e.condition}</span></td>
+                                                    <td className="px-3 py-2 text-gray-500">{e.responsible_name || '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {data.equipment.length === 0 && <p className="text-center text-gray-400 py-4">Нет оборудования</p>}
+                                </div>
+                                <p className="text-sm text-gray-500 mt-4">Общая стоимость: <span className="font-semibold">{formatMoney(data.statistics.total_value)}</span></p>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // === ДЕТАЛИ СОТРУДНИКА ===
+        const EmployeeDetailModal = ({ isOpen, onClose, employeeId }) => {
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [tab, setTab] = useState('equipment');
+            useEffect(() => {
+                if (isOpen && employeeId) {
+                    setLoading(true); setTab('equipment');
+                    fetch(`api/employee_details.php?id=${employeeId}`).then(r => r.json()).then(res => { if (res.success) setData(res.data); setLoading(false); }).catch(() => setLoading(false));
+                }
+            }, [isOpen, employeeId]);
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content modal-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold"><i className="fas fa-user mr-2 text-purple-600"></i>{data?.employee?.full_name || 'Загрузка...'}</h2>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                        </div>
+                        {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : data && (
+                            <>
+                                <div className="bg-gray-50 p-4 rounded mb-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                        <div><p className="text-gray-500">Должность</p><p className="font-semibold">{data.employee.position}</p></div>
+                                        <div><p className="text-gray-500">Отдел</p><p className="font-semibold">{data.employee.department || '-'}</p></div>
+                                        <div><p className="text-gray-500">Телефон</p><p className="font-semibold">{data.employee.phone || '-'}</p></div>
+                                        <div><p className="text-gray-500">Email</p><p className="font-semibold">{data.employee.email || '-'}</p></div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-3 mb-4">
+                                    <div className="bg-blue-50 p-3 rounded text-center"><p className="text-2xl font-bold text-blue-600">{data.statistics.equipment_count}</p><p className="text-xs text-gray-500">Оборудования</p></div>
+                                    <div className="bg-green-50 p-3 rounded text-center"><p className="text-2xl font-bold text-green-600">{data.statistics.premises_count}</p><p className="text-xs text-gray-500">Помещений</p></div>
+                                    <div className="bg-purple-50 p-3 rounded text-center"><p className="text-lg font-bold text-purple-600">{formatMoney(data.statistics.total_value)}</p><p className="text-xs text-gray-500">Стоимость</p></div>
+                                </div>
+                                <div className="border-b mb-4 flex">
+                                    <button className={`tab-btn ${tab === 'equipment' ? 'active' : ''}`} onClick={() => setTab('equipment')}>Оборудование</button>
+                                    <button className={`tab-btn ${tab === 'premises' ? 'active' : ''}`} onClick={() => setTab('premises')}>Помещения</button>
+                                    <button className={`tab-btn ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>История</button>
+                                </div>
+                                <div className="max-h-64 overflow-y-auto">
+                                    {tab === 'equipment' && (
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-gray-100 sticky top-0"><tr><th className="px-3 py-2 text-left">Инв. №</th><th className="px-3 py-2 text-left">Название</th><th className="px-3 py-2 text-left">Помещение</th><th className="px-3 py-2 text-left">Состояние</th></tr></thead>
+                                            <tbody>{data.equipment.map(e => (
+                                                <tr key={e.id} className="border-t"><td className="px-3 py-2 font-mono text-xs">{e.inventory_number}</td><td className="px-3 py-2">{e.name}</td><td className="px-3 py-2 text-gray-500">{e.location || '-'}</td>
+                                                    <td className="px-3 py-2"><span className={`px-2 py-1 rounded text-xs ${getConditionColor(e.condition)}`}>{e.condition}</span></td></tr>
+                                            ))}</tbody>
+                                        </table>
+                                    )}
+                                    {tab === 'premises' && (
+                                        <div className="grid grid-cols-2 gap-3">{data.premises.map(p => (
+                                            <div key={p.id} className="bg-gray-50 p-3 rounded">
+                                                <p className="font-semibold">{p.building}, {p.room_number}</p>
+                                                <p className="text-sm text-gray-500">{p.room_type} • {p.equipment_count} ед.</p>
+                                            </div>
+                                        ))}</div>
+                                    )}
+                                    {tab === 'history' && data.recent_history.map((h, i) => (
+                                        <div key={i} className="history-item text-sm">
+                                            <div className="flex justify-between"><span className="font-medium">{h.equipment_name}</span><span className="text-gray-400 text-xs">{formatDateTime(h.change_date)}</span></div>
+                                            <span className="text-gray-500">{getChangeTypeLabel(h.change_type)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // === ДЕТАЛЬНЫЙ ПРОСМОТР ОБОРУДОВАНИЯ ===
+        const EquipmentDetailModal = ({ isOpen, onClose, equipment, onEdit }) => {
+            const [data, setData] = useState(null);
+            const [history, setHistory] = useState([]);
+            const [loading, setLoading] = useState(false);
+            
+            useEffect(() => {
+                if (isOpen && equipment) {
+                    setLoading(true);
+                    Promise.all([
+                        fetch(`api/equipment.php?id=${equipment.id}`).then(r => r.json()),
+                        fetch(`api/history.php?equipment_id=${equipment.id}`).then(r => r.json())
+                    ]).then(([eqRes, histRes]) => {
+                        if (eqRes.success) setData(eqRes.data);
+                        if (histRes.success) setHistory(histRes.data || []);
+                        setLoading(false);
+                    }).catch(() => setLoading(false));
+                }
+            }, [isOpen, equipment]);
+            
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content modal-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold"><i className="fas fa-desktop mr-2 text-purple-600"></i>{data?.name || equipment?.name}</h2>
+                            <div className="flex gap-2">
+                                <button onClick={() => { onClose(); onEdit(equipment); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"><i className="fas fa-edit mr-1"></i>Редактировать</button>
+                                <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                            </div>
+                        </div>
+                        
+                        {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : data && (
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div className="lg:col-span-2 space-y-4">
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <h3 className="font-semibold mb-3"><i className="fas fa-info-circle mr-2 text-blue-500"></i>Основная информация</h3>
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div><span className="text-gray-500">Инв. номер:</span><br/><span className="font-mono font-medium">{data.inventory_number}</span></div>
+                                            <div><span className="text-gray-500">Категория:</span><br/><span className="font-medium">{data.category || '-'}</span></div>
+                                            <div><span className="text-gray-500">Производитель:</span><br/><span className="font-medium">{data.manufacturer || '-'}</span></div>
+                                            <div><span className="text-gray-500">Модель:</span><br/><span className="font-medium">{data.model || '-'}</span></div>
+                                            <div><span className="text-gray-500">Серийный номер:</span><br/><span className="font-mono">{data.serial_number || '-'}</span></div>
+                                            <div><span className="text-gray-500">Состояние:</span><br/><span className={`px-2 py-1 rounded text-xs ${getConditionColor(data.condition)}`}>{data.condition || '-'}</span></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <h3 className="font-semibold mb-3"><i className="fas fa-map-marker-alt mr-2 text-green-500"></i>Расположение</h3>
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div><span className="text-gray-500">Помещение:</span><br/><span className="font-medium">{data.location || 'Не указано'}</span></div>
+                                            <div><span className="text-gray-500">Ответственный:</span><br/><span className="font-medium">{data.responsible || 'Не назначен'}</span></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <h3 className="font-semibold mb-3"><i className="fas fa-ruble-sign mr-2 text-yellow-500"></i>Финансовая информация</h3>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                            <div><span className="text-gray-500">Цена покупки:</span><br/><span className="font-medium">{formatMoney(data.purchase_price)}</span></div>
+                                            <div><span className="text-gray-500">Текущая стоимость:</span><br/><span className="font-medium text-green-600">{formatMoney(data.current_value || data.price)}</span></div>
+                                            <div><span className="text-gray-500">Дата покупки:</span><br/><span className="font-medium">{formatDate(data.purchase_date)}</span></div>
+                                            <div><span className="text-gray-500">Гарантия до:</span><br/><span className="font-medium">{formatDate(data.warranty_until)}</span></div>
+                                        </div>
+                                    </div>
+                                    
+                                    {data.description && (
+                                        <div className="bg-gray-50 rounded-lg p-4">
+                                            <h3 className="font-semibold mb-2"><i className="fas fa-comment mr-2 text-purple-500"></i>Описание</h3>
+                                            <p className="text-sm text-gray-700">{data.description}</p>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="bg-gray-50 rounded-lg p-4">
+                                    <h3 className="font-semibold mb-3"><i className="fas fa-history mr-2 text-purple-500"></i>История изменений</h3>
+                                    <div className="max-h-96 overflow-y-auto">
+                                        {history.length > 0 ? history.map((h, i) => (
+                                            <div key={i} className="history-item text-sm mb-3">
+                                                <div className="flex justify-between items-start">
+                                                    <span className={`px-2 py-0.5 rounded text-xs ${
+                                                        h.change_type === 'создание' ? 'bg-green-100 text-green-800' :
+                                                        h.change_type === 'списание' ? 'bg-red-100 text-red-800' :
+                                                        'bg-blue-100 text-blue-800'
+                                                    }`}>{getChangeTypeLabel(h.change_type)}</span>
+                                                    <span className="text-xs text-gray-400">{formatDateTime(h.change_date)}</span>
+                                                </div>
+                                                {h.reason && <p className="text-gray-600 mt-1 text-xs">{h.reason}</p>}
+                                            </div>
+                                        )) : <p className="text-center text-gray-400 py-4 text-sm">Нет записей</p>}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // === ИСТОРИЯ ОБОРУДОВАНИЯ ===
+        const EquipmentHistoryModal = ({ isOpen, onClose, equipment }) => {
+            const [history, setHistory] = useState([]);
+            const [loading, setLoading] = useState(false);
+            useEffect(() => {
+                if (isOpen && equipment?.id) {
+                    setLoading(true);
+                    fetch(`api/history.php?equipment_id=${equipment.id}`).then(r => r.json()).then(res => { if (res.success) setHistory(res.data); setLoading(false); }).catch(() => setLoading(false));
+                }
+            }, [isOpen, equipment]);
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold"><i className="fas fa-history mr-2 text-purple-600"></i>История: {equipment?.name}</h2>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                        </div>
+                        <div className="bg-gray-50 p-3 rounded mb-4 text-sm">
+                            <span className="font-mono">{equipment?.inventory_number}</span> • {equipment?.category || '-'} • {equipment?.location || '-'}
+                        </div>
+                        {loading ? <div className="text-center py-8"><i className="fas fa-spinner fa-spin text-3xl text-purple-600"></i></div> : (
+                            <div className="max-h-96 overflow-y-auto">
+                                {history.length > 0 ? history.map((h, i) => (
+                                    <div key={i} className="history-item">
+                                        <div className="flex justify-between items-start">
+                                            <span className={`px-2 py-1 rounded text-xs ${h.change_type === 'создание' ? 'bg-green-100 text-green-800' : h.change_type === 'списание' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{getChangeTypeLabel(h.change_type)}</span>
+                                            <span className="text-xs text-gray-400">{formatDateTime(h.change_date)}</span>
+                                        </div>
+                                        {h.reason && <p className="text-sm text-gray-600 mt-1">{h.reason}</p>}
+                                        {h.new_premise_number && <p className="text-sm text-gray-500">→ {h.new_premise_building}, {h.new_premise_number}</p>}
+                                        {h.new_responsible_name && <p className="text-sm text-gray-500">→ {h.new_responsible_name}</p>}
+                                        {h.new_condition_name && <p className="text-sm text-gray-500">→ {h.new_condition_name}</p>}
+                                    </div>
+                                )) : <p className="text-center text-gray-400 py-8">Нет записей в истории</p>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // === УПРАВЛЕНИЕ ИНВЕНТАРИЗАЦИЕЙ ===
+        const InventoryManagement = ({ inventories, employees, premises, onRefresh }) => {
+            const [showCreateModal, setShowCreateModal] = useState(false);
+            const [showConductModal, setShowConductModal] = useState(false);
+            const [selectedInv, setSelectedInv] = useState(null);
+            const [createForm, setCreateForm] = useState({ inventory_number: '', start_date: '', responsible_id: '', notes: '', premise_ids: [] });
+            const [invData, setInvData] = useState(null);
+            const [loading, setLoading] = useState(false);
+
+            // Генерация номера инвентаризации
+            const generateInvNumber = () => {
+                const year = new Date().getFullYear();
+                const num = String(inventories.length + 1).padStart(3, '0');
+                return `ИНВ-${year}-${num}`;
+            };
+
+            // Создание инвентаризации
+            const handleCreate = async () => {
+                if (!createForm.inventory_number || !createForm.start_date) {
+                    alert('Заполните номер и дату начала');
+                    return;
+                }
+                setLoading(true);
+                const res = await fetch('api/inventories.php?action=add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(createForm)
+                }).then(r => r.json()).catch(() => ({ success: false }));
+                
+                if (res.success) {
+                    alert('Инвентаризация создана! Все оборудование добавлено в список проверки.');
+                    setShowCreateModal(false);
+                    setCreateForm({ inventory_number: '', start_date: '', responsible_id: '', notes: '', premise_ids: [] });
+                    onRefresh();
+                } else {
+                    alert('Ошибка: ' + (res.error || 'неизвестная'));
+                }
+                setLoading(false);
+            };
+
+            // Открытие инвентаризации для проведения
+            const openConduct = async (inv) => {
+                setSelectedInv(inv);
+                setLoading(true);
+                const res = await fetch(`api/inventories.php?id=${inv.id}`).then(r => r.json()).catch(() => ({ success: false }));
+                if (res.success) {
+                    setInvData(res.data);
+                    setShowConductModal(true);
+                } else {
+                    alert('Ошибка загрузки данных инвентаризации');
+                }
+                setLoading(false);
+            };
+
+            // Обновление позиции инвентаризации
+            const updateItem = async (itemId, data) => {
+                const res = await fetch('api/inventory_items.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: itemId, ...data })
+                }).then(r => r.json()).catch(() => ({ success: false }));
+                
+                if (res.success && invData) {
+                    // Обновляем локально
+                    setInvData(prev => ({
+                        ...prev,
+                        items: prev.items.map(item => item.id === itemId ? { ...item, ...data, checked_at: new Date().toISOString() } : item)
+                    }));
+                }
+                return res.success;
+            };
+
+            // Завершение инвентаризации
+            const completeInventory = async () => {
+                if (!confirm('Завершить инвентаризацию? Это действие нельзя отменить.')) return;
+                const res = await fetch('api/inventories.php?action=complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: selectedInv.id })
+                }).then(r => r.json()).catch(() => ({ success: false }));
+                
+                if (res.success) {
+                    alert('Инвентаризация завершена');
+                    setShowConductModal(false);
+                    onRefresh();
+                } else {
+                    alert('Ошибка: ' + (res.error || 'неизвестная'));
+                }
+            };
+
+            return (
+                <div className="fade-in">
+                    <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                        <h2 className="text-2xl font-bold text-gray-800"><i className="fas fa-clipboard-list mr-2 text-purple-600"></i>Инвентаризации</h2>
+                        <button onClick={() => { setCreateForm({ ...createForm, inventory_number: generateInvNumber(), start_date: new Date().toISOString().split('T')[0] }); setShowCreateModal(true); }} 
+                            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+                            <i className="fas fa-plus mr-2"></i>Создать инвентаризацию
+                        </button>
+                    </div>
+
+                    {/* Информационный блок */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                        <h3 className="font-semibold text-blue-800 mb-2"><i className="fas fa-info-circle mr-2"></i>Как провести инвентаризацию:</h3>
+                        <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
+                            <li>Создайте новую инвентаризацию, указав номер, дату и ответственного</li>
+                            <li>Система автоматически добавит всё оборудование в список проверки</li>
+                            <li>Нажмите "Провести" для начала проверки оборудования</li>
+                            <li>Отмечайте каждую единицу: на месте / не найдено / расхождение</li>
+                            <li>После проверки всех позиций завершите инвентаризацию</li>
+                            <li>Сформируйте акт инвентаризации в разделе "Документы"</li>
+                        </ol>
+                    </div>
+
+                    {/* Список инвентаризаций */}
+                    {inventories.length > 0 ? (
+                        <div className="space-y-4">
+                            {inventories.map(inv => (
+                                <div key={inv.id} className="bg-white rounded-lg shadow p-5">
+                                    <div className="flex justify-between items-start flex-wrap gap-2">
+                                        <div>
+                                            <h3 className="font-semibold text-lg">{inv.inventory_number}</h3>
+                                            <p className="text-sm text-gray-500">
+                                                {formatDate(inv.start_date)} — {inv.end_date ? formatDate(inv.end_date) : 'в процессе'}
+                                            </p>
+                                            {inv.responsible && <p className="text-sm text-gray-600 mt-1"><i className="fas fa-user mr-1"></i>{inv.responsible}</p>}
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`px-3 py-1 rounded text-sm ${getStatusColor(inv.status)}`}>{inv.status}</span>
+                                            {inv.status === 'в процессе' && (
+                                                <button onClick={() => openConduct(inv)} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">
+                                                    <i className="fas fa-clipboard-check mr-1"></i>Провести
+                                                </button>
+                                            )}
+                                            {inv.status === 'запланирована' && (
+                                                <button onClick={() => openConduct(inv)} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm">
+                                                    <i className="fas fa-play mr-1"></i>Начать
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {inv.notes && <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">{inv.notes}</p>}
+                                    {/* Статистика */}
+                                    <div className="flex gap-4 mt-3 text-sm">
+                                        <span className="text-gray-500"><i className="fas fa-check-circle text-green-500 mr-1"></i>Проверено: {inv.checked || 0}</span>
+                                        <span className="text-gray-500"><i className="fas fa-equals text-blue-500 mr-1"></i>Совпадает: {inv.matched || 0}</span>
+                                        <span className="text-gray-500"><i className="fas fa-exclamation-triangle text-orange-500 mr-1"></i>Расхождений: {inv.discrepancies || 0}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-lg shadow p-8 text-center">
+                            <i className="fas fa-clipboard-list text-6xl text-gray-300 mb-4"></i>
+                            <p className="text-gray-500 mb-4">Нет инвентаризаций</p>
+                            <button onClick={() => { setCreateForm({ ...createForm, inventory_number: generateInvNumber(), start_date: new Date().toISOString().split('T')[0] }); setShowCreateModal(true); }}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg">
+                                Создать первую инвентаризацию
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Модальное окно создания */}
+                    {showCreateModal && (
+                        <div className="modal active">
+                            <div className="modal-content">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold"><i className="fas fa-plus-circle mr-2 text-purple-600"></i>Создание инвентаризации</h3>
+                                    <button onClick={() => setShowCreateModal(false)} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                                </div>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Номер инвентаризации *</label>
+                                        <input type="text" value={createForm.inventory_number} onChange={e => setCreateForm({...createForm, inventory_number: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg" placeholder="ИНВ-2024-001" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Дата начала *</label>
+                                            <input type="date" value={createForm.start_date} onChange={e => setCreateForm({...createForm, start_date: e.target.value})}
+                                                className="w-full px-3 py-2 border rounded-lg" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Ответственный</label>
+                                            <select value={createForm.responsible_id} onChange={e => setCreateForm({...createForm, responsible_id: e.target.value})}
+                                                className="w-full px-3 py-2 border rounded-lg">
+                                                <option value="">Выберите...</option>
+                                                {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Примечания</label>
+                                        <textarea value={createForm.notes} onChange={e => setCreateForm({...createForm, notes: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg" rows="2" placeholder="Плановая инвентаризация компьютерных классов..." />
+                                    </div>
+                                    <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800">
+                                        <i className="fas fa-info-circle mr-1"></i>При создании инвентаризации всё активное оборудование будет автоматически добавлено в список проверки.
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 mt-6">
+                                    <button onClick={handleCreate} disabled={loading} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg">
+                                        <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-check'} mr-2`}></i>Создать
+                                    </button>
+                                    <button onClick={() => setShowCreateModal(false)} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Отмена</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Модальное окно проведения инвентаризации */}
+                    {showConductModal && invData && (
+                        <InventoryConductModal
+                            inventory={invData.inventory}
+                            items={invData.items}
+                            premises={premises}
+                            onUpdateItem={updateItem}
+                            onComplete={completeInventory}
+                            onClose={() => setShowConductModal(false)}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        // === МОДАЛЬНОЕ ОКНО ПРОВЕДЕНИЯ ИНВЕНТАРИЗАЦИИ ===
+        const InventoryConductModal = ({ inventory, items, premises, onUpdateItem, onComplete, onClose }) => {
+            const [filter, setFilter] = useState('all');
+            const [search, setSearch] = useState('');
+            const [updating, setUpdating] = useState(null);
+
+            const filteredItems = items.filter(item => {
+                const matchSearch = item.name?.toLowerCase().includes(search.toLowerCase()) || item.inventory_number?.toLowerCase().includes(search.toLowerCase());
+                const matchFilter = filter === 'all' || 
+                    (filter === 'unchecked' && !item.checked_at) ||
+                    (filter === 'matched' && item.status === 'совпадает') ||
+                    (filter === 'discrepancy' && item.status === 'расхождение') ||
+                    (filter === 'not_found' && item.status === 'не найдено');
+                return matchSearch && matchFilter;
+            });
+
+            const stats = {
+                total: items.length,
+                checked: items.filter(i => i.checked_at).length,
+                matched: items.filter(i => i.status === 'совпадает').length,
+                discrepancy: items.filter(i => i.status === 'расхождение').length,
+                notFound: items.filter(i => i.status === 'не найдено').length
+            };
+
+            const handleCheck = async (item, status, actualLocation = null, actualCondition = null, notes = null) => {
+                setUpdating(item.id);
+                await onUpdateItem(item.id, {
+                    status,
+                    actual_location_id: actualLocation || item.expected_location_id,
+                    actual_condition_id: actualCondition || item.expected_condition_id,
+                    notes
+                });
+                setUpdating(null);
+            };
+
+            return (
+                <div className="modal active">
+                    <div className="modal-content modal-xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h2 className="text-xl font-bold"><i className="fas fa-clipboard-check mr-2 text-purple-600"></i>Проведение: {inventory.inventory_number}</h2>
+                                <p className="text-sm text-gray-500">Начало: {formatDate(inventory.start_date)}</p>
+                            </div>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                        </div>
+
+                        {/* Статистика */}
+                        <div className="grid grid-cols-5 gap-3 mb-4">
+                            <div className="bg-gray-100 p-3 rounded text-center">
+                                <p className="text-2xl font-bold">{stats.total}</p>
+                                <p className="text-xs text-gray-500">Всего</p>
+                            </div>
+                            <div className="bg-blue-100 p-3 rounded text-center">
+                                <p className="text-2xl font-bold text-blue-600">{stats.checked}</p>
+                                <p className="text-xs text-blue-600">Проверено</p>
+                            </div>
+                            <div className="bg-green-100 p-3 rounded text-center">
+                                <p className="text-2xl font-bold text-green-600">{stats.matched}</p>
+                                <p className="text-xs text-green-600">Совпадает</p>
+                            </div>
+                            <div className="bg-orange-100 p-3 rounded text-center">
+                                <p className="text-2xl font-bold text-orange-600">{stats.discrepancy}</p>
+                                <p className="text-xs text-orange-600">Расхождение</p>
+                            </div>
+                            <div className="bg-red-100 p-3 rounded text-center">
+                                <p className="text-2xl font-bold text-red-600">{stats.notFound}</p>
+                                <p className="text-xs text-red-600">Не найдено</p>
+                            </div>
+                        </div>
+
+                        {/* Фильтры */}
+                        <div className="flex gap-4 mb-4 flex-wrap">
+                            <input type="text" placeholder="Поиск по названию или инв.номеру..." value={search} onChange={e => setSearch(e.target.value)}
+                                className="flex-1 min-w-[200px] px-3 py-2 border rounded-lg" />
+                            <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-2 border rounded-lg">
+                                <option value="all">Все позиции</option>
+                                <option value="unchecked">Не проверено</option>
+                                <option value="matched">Совпадает</option>
+                                <option value="discrepancy">Расхождение</option>
+                                <option value="not_found">Не найдено</option>
+                            </select>
+                        </div>
+
+                        {/* Список позиций */}
+                        <div className="max-h-[400px] overflow-y-auto border rounded-lg">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-100 sticky top-0">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left">Инв. №</th>
+                                        <th className="px-3 py-2 text-left">Название</th>
+                                        <th className="px-3 py-2 text-left">Ожидаемое место</th>
+                                        <th className="px-3 py-2 text-left">Ожид. состояние</th>
+                                        <th className="px-3 py-2 text-left">Статус</th>
+                                        <th className="px-3 py-2 text-center">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredItems.map(item => (
+                                        <tr key={item.id} className={`border-t inv-item ${item.status === 'совпадает' ? 'checked' : item.status === 'расхождение' || item.status === 'не найдено' ? 'discrepancy' : ''}`}>
+                                            <td className="px-3 py-2 font-mono text-xs">{item.inventory_number}</td>
+                                            <td className="px-3 py-2">{item.name}</td>
+                                            <td className="px-3 py-2 text-gray-500">{item.expected_location || '-'}</td>
+                                            <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${getConditionColor(item.expected_condition)}`}>{item.expected_condition || '-'}</span></td>
+                                            <td className="px-3 py-2">
+                                                {item.checked_at ? (
+                                                    <span className={`px-2 py-1 rounded text-xs ${
+                                                        item.status === 'совпадает' ? 'bg-green-100 text-green-800' :
+                                                        item.status === 'расхождение' ? 'bg-orange-100 text-orange-800' :
+                                                        'bg-red-100 text-red-800'
+                                                    }`}>{item.status}</span>
+                                                ) : (
+                                                    <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">не проверено</span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2 text-center">
+                                                {updating === item.id ? (
+                                                    <i className="fas fa-spinner fa-spin text-purple-600"></i>
+                                                ) : (
+                                                    <div className="flex justify-center gap-1">
+                                                        <button onClick={() => handleCheck(item, 'совпадает')} 
+                                                            className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs" title="На месте">
+                                                            <i className="fas fa-check"></i>
+                                                        </button>
+                                                        <button onClick={() => handleCheck(item, 'расхождение')} 
+                                                            className="bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 rounded text-xs" title="Расхождение">
+                                                            <i className="fas fa-exclamation"></i>
+                                                        </button>
+                                                        <button onClick={() => handleCheck(item, 'не найдено')} 
+                                                            className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs" title="Не найдено">
+                                                            <i className="fas fa-times"></i>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {filteredItems.length === 0 && <p className="text-center text-gray-400 py-8">Нет позиций</p>}
+                        </div>
+
+                        {/* Прогресс */}
+                        <div className="mt-4">
+                            <div className="flex justify-between text-sm mb-1">
+                                <span>Прогресс проверки</span>
+                                <span>{stats.checked} из {stats.total} ({stats.total > 0 ? Math.round(stats.checked / stats.total * 100) : 0}%)</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${stats.total > 0 ? stats.checked / stats.total * 100 : 0}%` }}></div>
+                            </div>
+                        </div>
+
+                        {/* Кнопки */}
+                        <div className="flex gap-3 mt-6 pt-4 border-t">
+                            {stats.checked === stats.total && stats.total > 0 && (
+                                <button onClick={onComplete} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">
+                                    <i className="fas fa-check-double mr-2"></i>Завершить инвентаризацию
+                                </button>
+                            )}
+                            <button onClick={onClose} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Закрыть</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // === РАЗДЕЛ ДОКУМЕНТОВ ===
+        const DocumentsSection = ({ equipment, premises, employees, inventories, writeoffs }) => {
+            const [docType, setDocType] = useState('');
+            const [generating, setGenerating] = useState(false);
+            const [previewHtml, setPreviewHtml] = useState('');
+            const [showPreview, setShowPreview] = useState(false);
+            const [showParamsModal, setShowParamsModal] = useState(false);
+            const [selectedDocType, setSelectedDocType] = useState('');
+            
+            // Параметры для документов
+            const [selectedInventory, setSelectedInventory] = useState('');
+            const [selectedPremise, setSelectedPremise] = useState('');
+            const [selectedEmployee, setSelectedEmployee] = useState('');
+            const [transferFrom, setTransferFrom] = useState('');
+            const [transferTo, setTransferTo] = useState('');
+            const [selectedEquipmentIds, setSelectedEquipmentIds] = useState([]);
+
+            const documentTypes = [
+                { id: 'inventory_act', name: 'Акт инвентаризации', icon: 'fa-clipboard-list', description: 'Формирование акта по результатам инвентаризации', needsParams: true },
+                { id: 'equipment_list', name: 'Ведомость оборудования', icon: 'fa-list-alt', description: 'Полный список оборудования с фильтрацией', needsParams: false },
+                { id: 'premise_passport', name: 'Паспорт помещения', icon: 'fa-door-open', description: 'Карточка помещения с оборудованием', needsParams: true },
+                { id: 'responsible_report', name: 'Отчёт по МОЛ', icon: 'fa-user-tie', description: 'Список оборудования за материально-ответственным лицом', needsParams: true },
+                { id: 'writeoff_act', name: 'Акт списания', icon: 'fa-archive', description: 'Акт на списание оборудования', needsParams: false },
+                { id: 'transfer_act', name: 'Акт приёма-передачи', icon: 'fa-exchange-alt', description: 'Акт передачи оборудования', needsParams: true }
+            ];
+
+            const openDocParams = (type) => {
+                const docInfo = documentTypes.find(d => d.id === type);
+                if (docInfo?.needsParams) {
+                    setSelectedDocType(type);
+                    setShowParamsModal(true);
+                } else {
+                    generateDocument(type, {});
+                }
+            };
+
+            const generateDocument = async (type, params = {}) => {
+                setGenerating(true);
+                setDocType(type);
+                setShowParamsModal(false);
+                
+                let html = '';
+                const today = new Date().toLocaleDateString('ru-RU');
+                const header = `
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">ГБПОУ "Колледж"</h2>
+                        <p style="margin: 5px 0; color: #666;">Система учёта материально-технической базы</p>
+                    </div>
+                `;
+
+                switch (type) {
+                    case 'equipment_list':
+                        html = `${header}
+                            <h3 style="text-align: center;">ВЕДОМОСТЬ ОБОРУДОВАНИЯ</h3>
+                            <p style="text-align: center; color: #666;">по состоянию на ${today}</p>
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: #f3f4f6;">
+                                        <th style="border: 1px solid #ddd; padding: 8px;">№</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">Инв. номер</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">Наименование</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">Категория</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">Помещение</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">Состояние</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">Стоимость</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${equipment.map((e, i) => `
+                                        <tr>
+                                            <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${i + 1}</td>
+                                            <td style="border: 1px solid #ddd; padding: 6px; font-family: monospace;">${e.inventory_number}</td>
+                                            <td style="border: 1px solid #ddd; padding: 6px;">${e.name}</td>
+                                            <td style="border: 1px solid #ddd; padding: 6px;">${e.category || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 6px;">${e.location || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 6px;">${e.condition || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${formatMoney(e.price)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #f3f4f6; font-weight: bold;">
+                                        <td colspan="6" style="border: 1px solid #ddd; padding: 8px; text-align: right;">ИТОГО:</td>
+                                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatMoney(equipment.reduce((s, e) => s + (parseFloat(e.price) || 0), 0))}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            <p style="margin-top: 30px;">Всего наименований: ${equipment.length}</p>
+                            <div style="margin-top: 50px; display: flex; justify-content: space-between;">
+                                <div>Составил: ___________________ / ___________________</div>
+                                <div>Дата: ${today}</div>
+                            </div>
+                        `;
+                        break;
+
+                    case 'inventory_act':
+                        const inv = inventories.find(i => i.id == params.inventoryId);
+                        if (!inv) {
+                            html = `${header}<p style="text-align: center; color: red;">Инвентаризация не выбрана</p>`;
+                            break;
+                        }
+                        html = `${header}
+                            <h3 style="text-align: center;">АКТ ИНВЕНТАРИЗАЦИИ № ${inv.inventory_number}</h3>
+                            <p style="text-align: center; color: #666;">от ${formatDate(inv.start_date)}</p>
+                            <div style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                                <p><strong>Статус:</strong> ${inv.status}</p>
+                                <p><strong>Ответственный:</strong> ${inv.responsible || 'Не указан'}</p>
+                                ${inv.notes ? `<p><strong>Примечания:</strong> ${inv.notes}</p>` : ''}
+                            </div>
+                            <h4>Результаты проверки:</h4>
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: #f3f4f6;">
+                                        <th style="border: 1px solid #ddd; padding: 6px;">№</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Инв. номер</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Наименование</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Помещение</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Состояние</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Результат</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${equipment.map((e, i) => `
+                                        <tr>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${i + 1}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; font-family: monospace;">${e.inventory_number}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.name}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.location || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.condition || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">✓</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <div style="margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center;">
+                                <div style="padding: 10px; background: #d1fae5; border-radius: 4px;"><strong>Совпадает:</strong> ${equipment.length}</div>
+                                <div style="padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>Расхождение:</strong> 0</div>
+                                <div style="padding: 10px; background: #fee2e2; border-radius: 4px;"><strong>Не найдено:</strong> 0</div>
+                            </div>
+                            <div style="margin-top: 40px;">
+                                <p>Председатель комиссии: ___________________ / ___________________</p>
+                                <p style="margin-top: 15px;">Члены комиссии:</p>
+                                <p>___________________ / ___________________</p>
+                                <p>___________________ / ___________________</p>
+                            </div>
+                        `;
+                        break;
+
+                    case 'premise_passport':
+                        const premise = premises.find(p => p.id == params.premiseId);
+                        if (!premise) {
+                            html = `${header}<p style="text-align: center; color: red;">Помещение не выбрано</p>`;
+                            break;
+                        }
+                        const premiseEquipment = equipment.filter(e => e.premise_id == premise.id);
+                        html = `${header}
+                            <h3 style="text-align: center;">ПАСПОРТ ПОМЕЩЕНИЯ</h3>
+                            <div style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                                <p><strong>Здание:</strong> ${premise.building}</p>
+                                <p><strong>Номер:</strong> ${premise.room_number}</p>
+                                <p><strong>Тип:</strong> ${premise.room_type || '-'}</p>
+                                <p><strong>Площадь:</strong> ${premise.area ? premise.area + ' м²' : '-'}</p>
+                                <p><strong>Вместимость:</strong> ${premise.capacity || '-'} чел.</p>
+                                <p><strong>Ответственный:</strong> ${premise.responsible_name || 'Не назначен'}</p>
+                            </div>
+                            <h4>Оборудование в помещении (${premiseEquipment.length} ед.):</h4>
+                            ${premiseEquipment.length > 0 ? `
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: #f3f4f6;">
+                                        <th style="border: 1px solid #ddd; padding: 6px;">№</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Инв. номер</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Наименование</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Состояние</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Стоимость</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${premiseEquipment.map((e, i) => `
+                                        <tr>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${i + 1}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; font-family: monospace;">${e.inventory_number}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.name}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.condition || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: right;">${formatMoney(e.price)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #f3f4f6; font-weight: bold;">
+                                        <td colspan="4" style="border: 1px solid #ddd; padding: 8px; text-align: right;">ИТОГО:</td>
+                                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatMoney(premiseEquipment.reduce((s, e) => s + (parseFloat(e.price) || 0), 0))}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            ` : '<p style="color: #666; text-align: center; padding: 20px;">Оборудование не закреплено</p>'}
+                            <div style="margin-top: 40px;">
+                                <p>Ответственный: ___________________ / ${premise.responsible_name || '___________________'}</p>
+                                <p style="margin-top: 15px;">Дата: ${today}</p>
+                            </div>
+                        `;
+                        break;
+
+                    case 'responsible_report':
+                        const emp = employees.find(e => e.id == params.employeeId);
+                        if (!emp) {
+                            html = `${header}<p style="text-align: center; color: red;">Сотрудник не выбран</p>`;
+                            break;
+                        }
+                        const empEquipment = equipment.filter(e => e.responsible_id == emp.id);
+                        html = `${header}
+                            <h3 style="text-align: center;">ОТЧЁТ ПО МАТЕРИАЛЬНО-ОТВЕТСТВЕННОМУ ЛИЦУ</h3>
+                            <p style="text-align: center; color: #666;">по состоянию на ${today}</p>
+                            <div style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                                <p><strong>ФИО:</strong> ${emp.full_name}</p>
+                                <p><strong>Должность:</strong> ${emp.position || '-'}</p>
+                                <p><strong>Отдел:</strong> ${emp.department || '-'}</p>
+                                <p><strong>Телефон:</strong> ${emp.phone || '-'}</p>
+                                <p><strong>Email:</strong> ${emp.email || '-'}</p>
+                            </div>
+                            <h4>Закреплённое оборудование (${empEquipment.length} ед.):</h4>
+                            ${empEquipment.length > 0 ? `
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: #f3f4f6;">
+                                        <th style="border: 1px solid #ddd; padding: 6px;">№</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Инв. номер</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Наименование</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Помещение</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Состояние</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Стоимость</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${empEquipment.map((e, i) => `
+                                        <tr>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${i + 1}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; font-family: monospace;">${e.inventory_number}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.name}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.location || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.condition || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: right;">${formatMoney(e.price)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #f3f4f6; font-weight: bold;">
+                                        <td colspan="5" style="border: 1px solid #ddd; padding: 8px; text-align: right;">ИТОГО:</td>
+                                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatMoney(empEquipment.reduce((s, e) => s + (parseFloat(e.price) || 0), 0))}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            ` : '<p style="color: #666; text-align: center; padding: 20px;">Оборудование не закреплено</p>'}
+                            <div style="margin-top: 40px;">
+                                <p>МОЛ: ___________________ / ${emp.full_name}</p>
+                                <p style="margin-top: 15px;">Дата: ${today}</p>
+                            </div>
+                        `;
+                        break;
+
+                    case 'writeoff_act':
+                        html = `${header}
+                            <h3 style="text-align: center;">АКТ СПИСАНИЯ ОБОРУДОВАНИЯ</h3>
+                            <p style="text-align: center; color: #666;">от ${today}</p>
+                            <p style="margin-top: 20px;">Комиссия в составе:</p>
+                            <p>1. _____________________________________ (председатель)</p>
+                            <p>2. _____________________________________ (член комиссии)</p>
+                            <p>3. _____________________________________ (член комиссии)</p>
+                            <p style="margin-top: 20px;">произвела осмотр и признала подлежащим списанию следующее оборудование:</p>
+                            ${writeoffs.length > 0 ? `
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: #f3f4f6;">
+                                        <th style="border: 1px solid #ddd; padding: 6px;">№</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Инв. номер</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Наименование</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Дата списания</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Причина</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${writeoffs.map((w, i) => `
+                                        <tr>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${i + 1}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; font-family: monospace;">${w.inventory_number}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${w.name}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${formatDate(w.write_off_date || w.decommissioning_date)}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${w.reason || w.decommissioning_reason || '-'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            ` : '<p style="color: #666; text-align: center; padding: 20px;">Нет списанного оборудования</p>'}
+                            <div style="margin-top: 40px;">
+                                <p>Председатель комиссии: ___________________ / ___________________</p>
+                                <p style="margin-top: 15px;">Члены комиссии:</p>
+                                <p>___________________ / ___________________</p>
+                                <p>___________________ / ___________________</p>
+                            </div>
+                        `;
+                        break;
+
+                    case 'transfer_act':
+                        const fromEmp = employees.find(e => e.id == params.fromEmployeeId);
+                        const toEmp = employees.find(e => e.id == params.toEmployeeId);
+                        const transferEquipment = equipment.filter(e => params.equipmentIds?.includes(e.id));
+                        
+                        if (!fromEmp || !toEmp) {
+                            html = `${header}<p style="text-align: center; color: red;">Выберите сотрудников для передачи</p>`;
+                            break;
+                        }
+                        if (transferEquipment.length === 0) {
+                            html = `${header}<p style="text-align: center; color: red;">Выберите оборудование для передачи</p>`;
+                            break;
+                        }
+                        
+                        html = `${header}
+                            <h3 style="text-align: center;">АКТ ПРИЁМА-ПЕРЕДАЧИ ОБОРУДОВАНИЯ</h3>
+                            <p style="text-align: center; color: #666;">от ${today}</p>
+                            <div style="margin: 20px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                <div style="padding: 15px; background: #fef3c7; border-radius: 8px;">
+                                    <p style="font-weight: bold; margin-bottom: 10px;">СДАЛ:</p>
+                                    <p>${fromEmp.full_name}</p>
+                                    <p style="color: #666; font-size: 12px;">${fromEmp.position || ''}</p>
+                                </div>
+                                <div style="padding: 15px; background: #d1fae5; border-radius: 8px;">
+                                    <p style="font-weight: bold; margin-bottom: 10px;">ПРИНЯЛ:</p>
+                                    <p>${toEmp.full_name}</p>
+                                    <p style="color: #666; font-size: 12px;">${toEmp.position || ''}</p>
+                                </div>
+                            </div>
+                            <h4>Передаваемое оборудование (${transferEquipment.length} ед.):</h4>
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: #f3f4f6;">
+                                        <th style="border: 1px solid #ddd; padding: 6px;">№</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Инв. номер</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Наименование</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Состояние</th>
+                                        <th style="border: 1px solid #ddd; padding: 6px;">Стоимость</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${transferEquipment.map((e, i) => `
+                                        <tr>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${i + 1}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; font-family: monospace;">${e.inventory_number}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.name}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.condition || '-'}</td>
+                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: right;">${formatMoney(e.price)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #f3f4f6; font-weight: bold;">
+                                        <td colspan="4" style="border: 1px solid #ddd; padding: 8px; text-align: right;">ИТОГО:</td>
+                                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatMoney(transferEquipment.reduce((s, e) => s + (parseFloat(e.price) || 0), 0))}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                                <div>
+                                    <p>Сдал: ___________________ / ${fromEmp.full_name}</p>
+                                    <p style="margin-top: 5px; color: #666; font-size: 12px;">подпись</p>
+                                </div>
+                                <div>
+                                    <p>Принял: ___________________ / ${toEmp.full_name}</p>
+                                    <p style="margin-top: 5px; color: #666; font-size: 12px;">подпись</p>
+                                </div>
+                            </div>
+                        `;
+                        break;
+
+                    default:
+                        html = `${header}<p style="text-align: center; color: #666; padding: 40px;">Выберите тип документа для формирования</p>`;
+                }
+
+                setPreviewHtml(html);
+                setShowPreview(true);
+                setGenerating(false);
+            };
+
+            const printDocument = () => {
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Документ</title>
+                        <style>
+                            body { font-family: 'Times New Roman', serif; padding: 20px; }
+                            @media print { body { padding: 0; } }
+                        </style>
+                    </head>
+                    <body>${previewHtml}</body>
+                    </html>
+                `);
+                printWindow.document.close();
+                printWindow.print();
+            };
+
+            return (
+                <div className="fade-in">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6"><i className="fas fa-file-alt mr-2 text-purple-600"></i>Документы</h2>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                        {documentTypes.map(doc => (
+                            <div key={doc.id} className="bg-white rounded-lg shadow p-5 card-hover cursor-pointer" onClick={() => openDocParams(doc.id)}>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                                        <i className={`fas ${doc.icon} text-purple-600`}></i>
+                                    </div>
+                                    <h3 className="font-semibold">{doc.name}</h3>
+                                </div>
+                                <p className="text-sm text-gray-500">{doc.description}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Модальное окно выбора параметров */}
+                    {showParamsModal && (
+                        <div className="modal active">
+                            <div className="modal-content">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold"><i className="fas fa-cog mr-2 text-purple-600"></i>Параметры документа</h3>
+                                    <button onClick={() => setShowParamsModal(false)} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
+                                </div>
+                                
+                                {selectedDocType === 'inventory_act' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Выберите инвентаризацию</label>
+                                        <select value={selectedInventory} onChange={e => setSelectedInventory(e.target.value)}
+                                            className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500">
+                                            <option value="">-- Выберите --</option>
+                                            {inventories.map(inv => (
+                                                <option key={inv.id} value={inv.id}>№{inv.inventory_number} от {formatDate(inv.start_date)} ({inv.status})</option>
+                                            ))}
+                                        </select>
+                                        {inventories.length === 0 && <p className="text-sm text-red-500 mt-2">Нет созданных инвентаризаций</p>}
+                                    </div>
+                                )}
+                                
+                                {selectedDocType === 'premise_passport' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Выберите помещение</label>
+                                        <select value={selectedPremise} onChange={e => setSelectedPremise(e.target.value)}
+                                            className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500">
+                                            <option value="">-- Выберите --</option>
+                                            {premises.map(p => (
+                                                <option key={p.id} value={p.id}>{p.building}, {p.room_number} ({p.room_type || 'Помещение'})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                
+                                {selectedDocType === 'responsible_report' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Выберите сотрудника (МОЛ)</label>
+                                        <select value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)}
+                                            className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500">
+                                            <option value="">-- Выберите --</option>
+                                            {employees.map(emp => (
+                                                <option key={emp.id} value={emp.id}>{emp.full_name} ({emp.position || 'Сотрудник'})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                
+                                {selectedDocType === 'transfer_act' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Кто передаёт (сдаёт)</label>
+                                            <select value={transferFrom} onChange={e => setTransferFrom(e.target.value)}
+                                                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500">
+                                                <option value="">-- Выберите --</option>
+                                                {employees.map(emp => (
+                                                    <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Кто принимает</label>
+                                            <select value={transferTo} onChange={e => setTransferTo(e.target.value)}
+                                                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500">
+                                                <option value="">-- Выберите --</option>
+                                                {employees.filter(e => e.id != transferFrom).map(emp => (
+                                                    <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Оборудование для передачи</label>
+                                            <div className="max-h-48 overflow-y-auto border rounded-lg p-2">
+                                                {equipment.filter(e => !transferFrom || e.responsible_id == transferFrom).map(eq => (
+                                                    <label key={eq.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer">
+                                                        <input type="checkbox" checked={selectedEquipmentIds.includes(eq.id)}
+                                                            onChange={e => {
+                                                                if (e.target.checked) setSelectedEquipmentIds([...selectedEquipmentIds, eq.id]);
+                                                                else setSelectedEquipmentIds(selectedEquipmentIds.filter(id => id !== eq.id));
+                                                            }}
+                                                            className="rounded text-purple-600" />
+                                                        <span className="font-mono text-xs">{eq.inventory_number}</span>
+                                                        <span className="text-sm">{eq.name}</span>
+                                                    </label>
+                                                ))}
+                                                {equipment.filter(e => !transferFrom || e.responsible_id == transferFrom).length === 0 && 
+                                                    <p className="text-gray-400 text-center py-4">Нет оборудования для передачи</p>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div className="flex justify-end gap-2 mt-6">
+                                    <button onClick={() => setShowParamsModal(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Отмена</button>
+                                    <button onClick={() => {
+                                        const params = {};
+                                        if (selectedDocType === 'inventory_act') params.inventoryId = selectedInventory;
+                                        if (selectedDocType === 'premise_passport') params.premiseId = selectedPremise;
+                                        if (selectedDocType === 'responsible_report') params.employeeId = selectedEmployee;
+                                        if (selectedDocType === 'transfer_act') {
+                                            params.fromEmployeeId = transferFrom;
+                                            params.toEmployeeId = transferTo;
+                                            params.equipmentIds = selectedEquipmentIds;
+                                        }
+                                        generateDocument(selectedDocType, params);
+                                    }} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg">
+                                        <i className="fas fa-file-alt mr-2"></i>Сформировать
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Модальное окно предпросмотра */}
+                    {showPreview && (
+                        <div className="modal active">
+                            <div className="modal-content modal-lg">
+                                <div className="flex justify-between items-center mb-4 no-print">
+                                    <h3 className="text-xl font-bold"><i className="fas fa-file-alt mr-2 text-purple-600"></i>Предпросмотр документа</h3>
+                                    <div className="flex gap-2">
+                                        <button onClick={printDocument} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">
+                                            <i className="fas fa-print mr-2"></i>Печать
+                                        </button>
+                                        <button onClick={() => setShowPreview(false)} className="text-gray-500 hover:text-gray-700">
+                                            <i className="fas fa-times text-xl"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="print-area bg-white p-6 border rounded-lg max-h-[600px] overflow-y-auto" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // === ГЛАВНОЕ ПРИЛОЖЕНИЕ ===
+        const App = () => {
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [user, setUser] = useState(null);
+            const [view, setView] = useState('dashboard');
+            const [loading, setLoading] = useState(false);
+            const [equipment, setEquipment] = useState([]);
+            const [premises, setPremises] = useState([]);
+            const [employees, setEmployees] = useState([]);
+            const [history, setHistory] = useState([]);
+            const [writeoffs, setWriteoffs] = useState([]);
+            const [inventories, setInventories] = useState([]);
+            const [stats, setStats] = useState({ totalEquipment: 0, totalPremises: 0, totalEmployees: 0, totalValue: 0, needsAttention: [], categoryDistribution: [] });
+
+            // Модальные окна
+            const [eqModal, setEqModal] = useState(false);
+            const [editEq, setEditEq] = useState(null);
+            const [eqDetailModal, setEqDetailModal] = useState(false);
+            const [detailEq, setDetailEq] = useState(null);
+            const [prModal, setPrModal] = useState(false);
+            const [editPr, setEditPr] = useState(null);
+            const [empModal, setEmpModal] = useState(false);
+            const [editEmp, setEditEmp] = useState(null);
+            const [prDetailModal, setPrDetailModal] = useState(false);
+            const [prDetailId, setPrDetailId] = useState(null);
+            const [empDetailModal, setEmpDetailModal] = useState(false);
+            const [empDetailId, setEmpDetailId] = useState(null);
+            const [eqHistModal, setEqHistModal] = useState(false);
+            const [eqHistItem, setEqHistItem] = useState(null);
+
+            // Проверка авторизации при загрузке
+            useEffect(() => {
+                const loggedIn = localStorage.getItem('isLoggedIn');
+                const savedUser = localStorage.getItem('user');
+                if (loggedIn === 'true' && savedUser) {
+                    setIsLoggedIn(true);
+                    setUser(JSON.parse(savedUser));
+                } else {
+                    window.location.href = 'login.html';
+                }
+            }, []);
+
+            // Выход из системы
+            const handleLogout = async () => {
+                try { await fetch('api/auth.php?action=logout'); } catch (e) {}
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('user');
+                window.location.href = 'login.html';
+            };
+
+            // Загрузка данных
+            const loadAll = async () => {
+                setLoading(true);
+                try {
+                    const [eqRes, prRes, empRes, histRes, woRes, invRes] = await Promise.all([
+                        fetch('equipment_get.php').then(r => r.json()).catch(() => ({ data: [] })),
+                        fetch('premises_get.php').then(r => r.json()).catch(() => ({ data: [] })),
+                        fetch('employees_get.php').then(r => r.json()).catch(() => ({ data: [] })),
+                        fetch('api/history.php?action=recent&limit=20').then(r => r.json()).catch(() => ({ data: [] })),
+                        fetch('api/writeoff.php?action=list').then(r => r.json()).catch(() => ({ data: [] })),
+                        fetch('inventories_get.php').then(r => r.json()).catch(() => ({ data: [] }))
+                    ]);
+                    setEquipment(eqRes.data || []);
+                    setPremises(prRes.data || []);
+                    setEmployees(empRes.data || []);
+                    setHistory(histRes.data || []);
+                    setWriteoffs(woRes.data || []);
+                    setInventories(invRes.data || []);
+                } catch (e) { console.error(e); }
+                setLoading(false);
+            };
+
+            useEffect(() => { if (isLoggedIn) loadAll(); }, [isLoggedIn]);
+
+            // Обновление статистики
+            useEffect(() => {
+                const activeEquipment = equipment.filter(e => e.is_active !== 0);
+                const totalValue = activeEquipment.reduce((s, e) => s + (parseFloat(e.price) || 0), 0);
+                const needsAttention = activeEquipment.filter(e => e.condition === 'Удовлетворительное' || e.condition === 'Требует ремонта').map(e => ({ name: e.name, condition: e.condition }));
+                const catMap = {};
+                activeEquipment.forEach(e => { const c = e.category || 'Без категории'; catMap[c] = (catMap[c] || 0) + 1; });
+                const categoryDistribution = Object.entries(catMap).map(([name, count]) => ({ name, count }));
+                setStats({ totalEquipment: activeEquipment.length, totalPremises: premises.length, totalEmployees: employees.length, totalValue, needsAttention, categoryDistribution });
+            }, [equipment, premises, employees]);
+
+            // CRUD операции
+            const saveEquipment = async (form) => {
+                setLoading(true);
+                const url = editEq ? `equipment_update.php?id=${editEq.id}` : 'equipment_add.php';
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }).then(r => r.json()).catch(() => ({ success: false }));
+                if (res.success) { setEqModal(false); loadAll(); } else alert('Ошибка: ' + (res.error || 'неизвестная'));
+                setLoading(false);
+            };
+            const deleteEquipment = async (id) => {
+                if (!confirm('Удалить оборудование? Это действие нельзя отменить.')) return;
+                await fetch(`equipment_delete.php?id=${id}`, { method: 'POST' });
+                loadAll();
+            };
+            const savePremise = async (form) => {
+                setLoading(true);
+                const url = editPr ? `premises_update.php?id=${editPr.id}` : 'premises_add.php';
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }).then(r => r.json()).catch(() => ({ success: false }));
+                if (res.success) { setPrModal(false); loadAll(); } else alert('Ошибка: ' + (res.error || 'неизвестная'));
+                setLoading(false);
+            };
+            const deletePremise = async (id) => {
+                if (!confirm('Удалить помещение?')) return;
+                const res = await fetch(`premises_delete.php?id=${id}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ success: false }));
+                if (res.success) loadAll(); else alert('Ошибка: ' + (res.error || 'невозможно удалить'));
+            };
+            const saveEmployee = async (form) => {
+                setLoading(true);
+                const url = editEmp ? `employees_update.php?id=${editEmp.id}` : 'employees_add.php';
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }).then(r => r.json()).catch(() => ({ success: false }));
+                if (res.success) { setEmpModal(false); loadAll(); } else alert('Ошибка: ' + (res.error || 'неизвестная'));
+                setLoading(false);
+            };
+            const deleteEmployee = async (id) => {
+                if (!confirm('Удалить сотрудника?')) return;
+                const res = await fetch(`employees_delete.php?id=${id}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ success: false }));
+                if (res.success) loadAll(); else alert('Ошибка: ' + (res.error || 'невозможно удалить'));
+            };
+            const restoreEquipment = async (id) => {
+                if (!confirm('Восстановить оборудование из списания?')) return;
+                const res = await fetch('api/writeoff.php?action=restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipment_id: id }) }).then(r => r.json());
+                if (res.success) { alert('Оборудование восстановлено'); loadAll(); } else alert('Ошибка: ' + res.error);
+            };
+
+            if (!isLoggedIn) {
+                return <div className="min-h-screen flex items-center justify-center"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div>;
+            }
+
+            return (
+                <div className="min-h-screen">
+                    <Navbar currentView={view} setCurrentView={setView} user={user} onLogout={handleLogout} />
+                    <div className="container mx-auto px-4 py-6">
+                        {view === 'dashboard' && <Dashboard stats={stats} recentHistory={history} />}
+                        {view === 'equipment' && <EquipmentList equipment={equipment.filter(e => e.is_active !== 0)} loading={loading} onAdd={() => { setEditEq(null); setEqModal(true); }} onEdit={e => { setEditEq(e); setEqModal(true); }} onDelete={deleteEquipment} onViewHistory={e => { setEqHistItem(e); setEqHistModal(true); }} onViewDetails={e => { setDetailEq(e); setEqDetailModal(true); }} />}
+                        {view === 'premises' && <PremisesList premises={premises} loading={loading} onAdd={() => { setEditPr(null); setPrModal(true); }} onEdit={p => { setEditPr(p); setPrModal(true); }} onDelete={deletePremise} onView={p => { setPrDetailId(p.id); setPrDetailModal(true); }} />}
+                        {view === 'employees' && <EmployeesList employees={employees} loading={loading} onAdd={() => { setEditEmp(null); setEmpModal(true); }} onEdit={e => { setEditEmp(e); setEmpModal(true); }} onDelete={deleteEmployee} onView={e => { setEmpDetailId(e.id); setEmpDetailModal(true); }} />}
+                        {view === 'history' && <HistoryList history={history} loading={loading} />}
+                        {view === 'inventory' && <InventoryManagement inventories={inventories} employees={employees} premises={premises} onRefresh={loadAll} />}
+                        {view === 'documents' && <DocumentsSection equipment={equipment.filter(e => e.is_active !== 0)} premises={premises} employees={employees} inventories={inventories} writeoffs={writeoffs} />}
+                        {view === 'writeoffs' && <WriteOffsList writeoffs={writeoffs} equipment={equipment} employees={employees} loading={loading} onRestore={restoreEquipment} onRefresh={loadAll} />}
+                    </div>
+
+                    <EquipmentModal isOpen={eqModal} onClose={() => setEqModal(false)} onSave={saveEquipment} equipment={editEq} premises={premises} employees={employees} loading={loading} />
+                    <EquipmentDetailModal isOpen={eqDetailModal} onClose={() => setEqDetailModal(false)} equipment={detailEq} onEdit={e => { setEqDetailModal(false); setEditEq(e); setEqModal(true); }} />
+                    <PremiseModal isOpen={prModal} onClose={() => setPrModal(false)} onSave={savePremise} premise={editPr} employees={employees} loading={loading} />
+                    <EmployeeModal isOpen={empModal} onClose={() => setEmpModal(false)} onSave={saveEmployee} employee={editEmp} loading={loading} />
+                    <PremiseDetailModal isOpen={prDetailModal} onClose={() => setPrDetailModal(false)} premiseId={prDetailId} />
+                    <EmployeeDetailModal isOpen={empDetailModal} onClose={() => setEmpDetailModal(false)} employeeId={empDetailId} />
+                    <EquipmentHistoryModal isOpen={eqHistModal} onClose={() => setEqHistModal(false)} equipment={eqHistItem} />
+
+                    <footer className="bg-gray-800 text-white py-4 mt-8">
+                        <div className="container mx-auto px-4 text-center text-sm">© 2024 ИС учета МТБ колледжа • PHP + MySQL</div>
+                    </footer>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
