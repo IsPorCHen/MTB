@@ -51,6 +51,10 @@
             'Удовлетворительное': 'bg-yellow-100 text-yellow-800', 'Требует ремонта': 'bg-orange-100 text-orange-800',
             'Списано': 'bg-red-100 text-red-800'
         }[cond] || 'bg-gray-100 text-gray-800');
+        const getStatusColor = (status) => ({
+            'в процессе': 'bg-blue-100 text-blue-800', 'завершена': 'bg-green-100 text-green-800',
+            'запланирована': 'bg-yellow-100 text-yellow-800', 'отменена': 'bg-red-100 text-red-800'
+        }[status] || 'bg-gray-100 text-gray-800');
 
         // === НАВИГАЦИЯ ===
         const Navbar = ({ currentView, setCurrentView, user, onLogout }) => (
@@ -1380,51 +1384,75 @@
                             html = `${header}<p style="text-align: center; color: red;">Инвентаризация не выбрана</p>`;
                             break;
                         }
-                        html = `${header}
-                            <h3 style="text-align: center;">АКТ ИНВЕНТАРИЗАЦИИ № ${inv.inventory_number}</h3>
-                            <p style="text-align: center; color: #666;">от ${formatDate(inv.start_date)}</p>
-                            <div style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px;">
-                                <p><strong>Статус:</strong> ${inv.status}</p>
-                                <p><strong>Ответственный:</strong> ${inv.responsible || 'Не указан'}</p>
-                                ${inv.notes ? `<p><strong>Примечания:</strong> ${inv.notes}</p>` : ''}
-                            </div>
-                            <h4>Результаты проверки:</h4>
-                            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
-                                <thead>
-                                    <tr style="background: #f3f4f6;">
-                                        <th style="border: 1px solid #ddd; padding: 6px;">№</th>
-                                        <th style="border: 1px solid #ddd; padding: 6px;">Инв. номер</th>
-                                        <th style="border: 1px solid #ddd; padding: 6px;">Наименование</th>
-                                        <th style="border: 1px solid #ddd; padding: 6px;">Помещение</th>
-                                        <th style="border: 1px solid #ddd; padding: 6px;">Состояние</th>
-                                        <th style="border: 1px solid #ddd; padding: 6px;">Результат</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${equipment.map((e, i) => `
-                                        <tr>
-                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${i + 1}</td>
-                                            <td style="border: 1px solid #ddd; padding: 4px; font-family: monospace;">${e.inventory_number}</td>
-                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.name}</td>
-                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.location || '-'}</td>
-                                            <td style="border: 1px solid #ddd; padding: 4px;">${e.condition || '-'}</td>
-                                            <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">✓</td>
+                        
+                        // Загружаем данные инвентаризации с позициями
+                        try {
+                            const invDataRes = await fetch(`inventory_get.php?id=${params.inventoryId}`).then(r => r.json());
+                            const invItems = invDataRes.success && invDataRes.data?.items ? invDataRes.data.items : [];
+                            
+                            const matched = invItems.filter(i => i.status === 'совпадает').length;
+                            const discrepancy = invItems.filter(i => i.status === 'расхождение').length;
+                            const notFound = invItems.filter(i => i.status === 'не найдено').length;
+                            const notChecked = invItems.filter(i => !i.status || i.status === 'не проверено').length;
+                            
+                            const getResultIcon = (status) => {
+                                if (status === 'совпадает') return '<span style="color: green;">✓</span>';
+                                if (status === 'расхождение') return '<span style="color: orange;">⚠</span>';
+                                if (status === 'не найдено') return '<span style="color: red;">✗</span>';
+                                return '<span style="color: gray;">—</span>';
+                            };
+                            
+                            html = `${header}
+                                <h3 style="text-align: center;">АКТ ИНВЕНТАРИЗАЦИИ № ${inv.inventory_number}</h3>
+                                <p style="text-align: center; color: #666;">от ${formatDate(inv.start_date)}</p>
+                                <div style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                                    <p><strong>Статус:</strong> ${inv.status}</p>
+                                    <p><strong>Ответственный:</strong> ${inv.responsible || 'Не указан'}</p>
+                                    ${inv.notes ? `<p><strong>Примечания:</strong> ${inv.notes}</p>` : ''}
+                                </div>
+                                <h4>Результаты проверки (${invItems.length} позиций):</h4>
+                                <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
+                                    <thead>
+                                        <tr style="background: #f3f4f6;">
+                                            <th style="border: 1px solid #ddd; padding: 6px;">№</th>
+                                            <th style="border: 1px solid #ddd; padding: 6px;">Инв. номер</th>
+                                            <th style="border: 1px solid #ddd; padding: 6px;">Наименование</th>
+                                            <th style="border: 1px solid #ddd; padding: 6px;">Ожид. место</th>
+                                            <th style="border: 1px solid #ddd; padding: 6px;">Факт. место</th>
+                                            <th style="border: 1px solid #ddd; padding: 6px;">Результат</th>
+                                            <th style="border: 1px solid #ddd; padding: 6px;">Примечание</th>
                                         </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                            <div style="margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center;">
-                                <div style="padding: 10px; background: #d1fae5; border-radius: 4px;"><strong>Совпадает:</strong> ${equipment.length}</div>
-                                <div style="padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>Расхождение:</strong> 0</div>
-                                <div style="padding: 10px; background: #fee2e2; border-radius: 4px;"><strong>Не найдено:</strong> 0</div>
-                            </div>
-                            <div style="margin-top: 40px;">
-                                <p>Председатель комиссии: ___________________ / ___________________</p>
-                                <p style="margin-top: 15px;">Члены комиссии:</p>
-                                <p>___________________ / ___________________</p>
-                                <p>___________________ / ___________________</p>
-                            </div>
-                        `;
+                                    </thead>
+                                    <tbody>
+                                        ${invItems.map((item, i) => `
+                                            <tr style="${item.status === 'расхождение' ? 'background: #fef3c7;' : item.status === 'не найдено' ? 'background: #fee2e2;' : ''}">
+                                                <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${i + 1}</td>
+                                                <td style="border: 1px solid #ddd; padding: 4px; font-family: monospace;">${item.inventory_number || '-'}</td>
+                                                <td style="border: 1px solid #ddd; padding: 4px;">${item.name || '-'}</td>
+                                                <td style="border: 1px solid #ddd; padding: 4px;">${item.expected_location || '-'}</td>
+                                                <td style="border: 1px solid #ddd; padding: 4px;">${item.actual_location || item.expected_location || '-'}</td>
+                                                <td style="border: 1px solid #ddd; padding: 4px; text-align: center;">${getResultIcon(item.status)}</td>
+                                                <td style="border: 1px solid #ddd; padding: 4px; font-size: 11px;">${item.notes || ''}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                                <div style="margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; text-align: center;">
+                                    <div style="padding: 10px; background: #d1fae5; border-radius: 4px;"><strong>Совпадает:</strong> ${matched}</div>
+                                    <div style="padding: 10px; background: #fef3c7; border-radius: 4px;"><strong>Расхождение:</strong> ${discrepancy}</div>
+                                    <div style="padding: 10px; background: #fee2e2; border-radius: 4px;"><strong>Не найдено:</strong> ${notFound}</div>
+                                    <div style="padding: 10px; background: #e5e7eb; border-radius: 4px;"><strong>Не проверено:</strong> ${notChecked}</div>
+                                </div>
+                                <div style="margin-top: 40px;">
+                                    <p>Председатель комиссии: ___________________ / ___________________</p>
+                                    <p style="margin-top: 15px;">Члены комиссии:</p>
+                                    <p>___________________ / ___________________</p>
+                                    <p>___________________ / ___________________</p>
+                                </div>
+                            `;
+                        } catch (e) {
+                            html = `${header}<p style="text-align: center; color: red;">Ошибка загрузки данных инвентаризации</p>`;
+                        }
                         break;
 
                     case 'premise_passport':

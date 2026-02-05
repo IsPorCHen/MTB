@@ -1,0 +1,19 @@
+ОШИБКИ
+1) НЕ ПРИВЯЗЫВАЮТСЯ ОТВЕТСТВЕННЫЕ К ПОМЕЩЕНИЮ (ПОМЕЩЕНИЯ-РЕДАКТИРОВАТЬ-ОТВЕТСТВЕННЫЙ)
+2) ПРИ РЕДАКТИРОВАНИИ ОБОРУДОВАНИЯ СЛЕТАЕТ СТОИМОСТЬ ТОВАРА
+3) ПРИ НАЖАТИИ НА ИНВЕНТАРИЗАЦИЮ = БЕЛЫЙ ЭКРАН (
+ОШИБКА В КОНСОЛИ:
+ReferenceError: getStatusColor is not defined
+    InventoryManagement http://localhost/Project-MTB/ line 3 > injectedScript:2152
+    InventoryManagement http://localhost/Project-MTB/ line 3 > injectedScript:2135
+    React 12
+react-dom.production.min.js:121:178
+Uncaught ReferenceError: getStatusColor is not defined
+    InventoryManagement http://localhost/Project-MTB/ line 3 > injectedScript:2152
+    InventoryManagement http://localhost/Project-MTB/ line 3 > injectedScript:2135
+    React 12
+Inline Babel script:987:91
+Ошибка карты кода: Error: NetworkError when attempting to fetch resource.
+URL ресурса: https://unpkg.com/@babel/standalone/babel.min.js
+URL карты кода: babel.min.js.map)
+4) В ЛЮБОМ ПАСПОРТЕ ПОМЕЩЕНИЯ ОТВЕТСТВЕННЫЙ ПОМЕЩЕНИЯ: НЕ УКАЗАН (ХОТЯ ПО БД И ВО ВСЕХ СПИСКАХ ОТВЕТСТВЕННЫЙ ЕСТЬ)

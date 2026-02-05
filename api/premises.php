@@ -59,7 +59,12 @@ function getAllPremises() {
     
     // Fallback: если представление отсутствует — соберём данные через JOIN/COUNT
     if ($stmt === false) {
-        $fallback = "SELECT p.id, p.room_number, p.building, p.floor, p.room_type, p.area, p.capacity, p.status, COUNT(e.id) AS equipment_count FROM premises p LEFT JOIN equipment e ON p.id = e.premise_id GROUP BY p.id, p.room_number, p.building, p.floor, p.room_type, p.area, p.capacity, p.status ORDER BY p.building, p.room_number";
+        $fallback = "SELECT p.id, p.room_number, p.building, p.floor, p.room_type, p.area, p.capacity, p.status, p.responsible_id, emp.full_name AS responsible_name, COUNT(e.id) AS equipment_count 
+            FROM premises p 
+            LEFT JOIN equipment e ON p.id = e.premise_id AND e.is_active = 1
+            LEFT JOIN employees emp ON p.responsible_id = emp.id
+            GROUP BY p.id, p.room_number, p.building, p.floor, p.room_type, p.area, p.capacity, p.status, p.responsible_id, emp.full_name 
+            ORDER BY p.building, p.room_number";
         $stmt = sqlsrv_query($conn, $fallback);
         if ($stmt === false) {
             closeDBConnection($conn);
@@ -183,7 +188,7 @@ function updatePremise($id) {
     
     $query = "UPDATE premises 
               SET room_number = ?, building = ?, floor = ?, room_type = ?, 
-                  area = ?, capacity = ?, status = ?
+                  area = ?, capacity = ?, status = ?, responsible_id = ?
               WHERE id = ?";
     
     $params = array(
@@ -194,6 +199,7 @@ function updatePremise($id) {
         $input['area'] ?? null,
         $input['capacity'] ?? null,
         $input['status'] ?? 'активное',
+        !empty($input['responsible_id']) ? $input['responsible_id'] : null,
         $id
     );
     
