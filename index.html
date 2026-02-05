@@ -44,6 +44,7 @@
         const getChangeTypeLabel = (type) => ({
             'создание': 'Создано', 'перемещение': 'Перемещено', 'смена_ответственного': 'Смена ответственного',
             'смена_состояния': 'Изменено состояние', 'редактирование': 'Отредактировано',
+            'изменение_цены': 'Изменение стоимости',
             'списание': 'Списано', 'восстановление': 'Восстановлено', 'инвентаризация': 'Инвентаризация'
         }[type] || type);
         const getConditionColor = (cond) => ({
@@ -155,15 +156,18 @@
         );
 
         // === СПИСОК ОБОРУДОВАНИЯ ===
-        const EquipmentList = ({ equipment, onAdd, onEdit, onDelete, onViewHistory, loading }) => {
+        const EquipmentList = ({ equipment, onAdd, onEdit, onDelete, onViewHistory, onViewDetails, loading }) => {
             const [search, setSearch] = useState('');
             const [filterCat, setFilterCat] = useState('all');
+            const [filterCond, setFilterCond] = useState('all');
             const filtered = equipment.filter(e => {
                 const matchSearch = e.name?.toLowerCase().includes(search.toLowerCase()) || e.inventory_number?.toLowerCase().includes(search.toLowerCase());
                 const matchCat = filterCat === 'all' || e.category === filterCat;
-                return matchSearch && matchCat;
+                const matchCond = filterCond === 'all' || e.condition === filterCond;
+                return matchSearch && matchCat && matchCond;
             });
             const categories = [...new Set(equipment.map(e => e.category).filter(Boolean))];
+            const conditions = [...new Set(equipment.map(e => e.condition).filter(Boolean))];
 
             return (
                 <div className="fade-in">
@@ -174,12 +178,16 @@
                         </button>
                     </div>
                     <div className="bg-white rounded-lg shadow p-4 mb-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="text" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <input type="text" placeholder="Поиск по названию или инв. номеру..." value={search} onChange={e => setSearch(e.target.value)}
                                 className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" />
                             <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="px-4 py-2 border rounded-lg">
                                 <option value="all">Все категории</option>
                                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <select value={filterCond} onChange={e => setFilterCond(e.target.value)} className="px-4 py-2 border rounded-lg">
+                                <option value="all">Все состояния</option>
+                                {conditions.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                     </div>
@@ -192,6 +200,7 @@
                                         <th className="px-4 py-3 text-left">Название</th>
                                         <th className="px-4 py-3 text-left hidden md:table-cell">Категория</th>
                                         <th className="px-4 py-3 text-left hidden md:table-cell">Помещение</th>
+                                        <th className="px-4 py-3 text-left hidden lg:table-cell">Ответственный</th>
                                         <th className="px-4 py-3 text-left">Состояние</th>
                                         <th className="px-4 py-3 text-left hidden lg:table-cell">Стоимость</th>
                                         <th className="px-4 py-3 text-center">Действия</th>
@@ -199,14 +208,16 @@
                                 </thead>
                                 <tbody>
                                     {filtered.map(item => (
-                                        <tr key={item.id} className="border-t table-row-hover">
+                                        <tr key={item.id} className="border-t table-row-hover" onClick={() => onViewDetails && onViewDetails(item)}>
                                             <td className="px-4 py-3 font-mono text-xs">{item.inventory_number}</td>
-                                            <td className="px-4 py-3">{item.name}</td>
+                                            <td className="px-4 py-3 font-medium">{item.name}</td>
                                             <td className="px-4 py-3 hidden md:table-cell text-gray-500">{item.category || '-'}</td>
                                             <td className="px-4 py-3 hidden md:table-cell text-gray-500">{item.location || '-'}</td>
+                                            <td className="px-4 py-3 hidden lg:table-cell text-gray-500">{item.responsible || '-'}</td>
                                             <td className="px-4 py-3"><span className={`px-2 py-1 rounded text-xs ${getConditionColor(item.condition)}`}>{item.condition || '-'}</span></td>
-                                            <td className="px-4 py-3 hidden lg:table-cell">{formatMoney(item.price)}</td>
-                                            <td className="px-4 py-3 text-center space-x-1">
+                                            <td className="px-4 py-3 hidden lg:table-cell font-mono">{formatMoney(item.price)}</td>
+                                            <td className="px-4 py-3 text-center space-x-1" onClick={e => e.stopPropagation()}>
+                                                <button onClick={() => onViewDetails && onViewDetails(item)} className="text-green-600 hover:text-green-800 p-1" title="Просмотр"><i className="fas fa-eye"></i></button>
                                                 <button onClick={() => onViewHistory(item)} className="text-purple-600 hover:text-purple-800 p-1" title="История"><i className="fas fa-history"></i></button>
                                                 <button onClick={() => onEdit(item)} className="text-blue-600 hover:text-blue-800 p-1" title="Редактировать"><i className="fas fa-edit"></i></button>
                                                 <button onClick={() => onDelete(item.id)} className="text-red-600 hover:text-red-800 p-1" title="Удалить"><i className="fas fa-trash"></i></button>
@@ -756,10 +767,12 @@
             const [data, setData] = useState(null);
             const [history, setHistory] = useState([]);
             const [loading, setLoading] = useState(false);
+            const [activeTab, setActiveTab] = useState('info');
             
             useEffect(() => {
                 if (isOpen && equipment) {
                     setLoading(true);
+                    setActiveTab('info');
                     Promise.all([
                         fetch(`api/equipment.php?id=${equipment.id}`).then(r => r.json()),
                         fetch(`api/history.php?equipment_id=${equipment.id}`).then(r => r.json())
@@ -772,6 +785,11 @@
             }, [isOpen, equipment]);
             
             if (!isOpen) return null;
+            
+            // Фильтруем историю по типам
+            const priceHistory = history.filter(h => h.change_type === 'изменение_цены' || (h.new_price && h.change_type === 'создание'));
+            const movementHistory = history.filter(h => h.change_type === 'перемещение' || h.change_type === 'смена_ответственного');
+            const conditionHistory = history.filter(h => h.change_type === 'смена_состояния' || h.change_type === 'создание' || h.change_type === 'списание');
 
             return (
                 <div className="modal active">
@@ -779,71 +797,205 @@
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold"><i className="fas fa-desktop mr-2 text-purple-600"></i>{data?.name || equipment?.name}</h2>
                             <div className="flex gap-2">
-                                <button onClick={() => { onClose(); onEdit(equipment); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"><i className="fas fa-edit mr-1"></i>Редактировать</button>
+                                <button onClick={() => { onClose(); onEdit(data || equipment); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"><i className="fas fa-edit mr-1"></i>Редактировать</button>
                                 <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><i className="fas fa-times text-xl"></i></button>
                             </div>
                         </div>
                         
+                        {/* Вкладки */}
+                        <div className="border-b mb-4 flex flex-wrap gap-1">
+                            <button className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`} onClick={() => setActiveTab('info')}><i className="fas fa-info-circle mr-1"></i>Информация</button>
+                            <button className={`tab-btn ${activeTab === 'finance' ? 'active' : ''}`} onClick={() => setActiveTab('finance')}><i className="fas fa-ruble-sign mr-1"></i>Финансы</button>
+                            <button className={`tab-btn ${activeTab === 'movements' ? 'active' : ''}`} onClick={() => setActiveTab('movements')}><i className="fas fa-exchange-alt mr-1"></i>Перемещения</button>
+                            <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}><i className="fas fa-history mr-1"></i>Вся история</button>
+                        </div>
+                        
                         {loading ? <div className="text-center py-12"><i className="fas fa-spinner fa-spin text-4xl text-purple-600"></i></div> : data && (
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                <div className="lg:col-span-2 space-y-4">
-                                    <div className="bg-gray-50 rounded-lg p-4">
-                                        <h3 className="font-semibold mb-3"><i className="fas fa-info-circle mr-2 text-blue-500"></i>Основная информация</h3>
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                            <div><span className="text-gray-500">Инв. номер:</span><br/><span className="font-mono font-medium">{data.inventory_number}</span></div>
-                                            <div><span className="text-gray-500">Категория:</span><br/><span className="font-medium">{data.category || '-'}</span></div>
-                                            <div><span className="text-gray-500">Производитель:</span><br/><span className="font-medium">{data.manufacturer || '-'}</span></div>
-                                            <div><span className="text-gray-500">Модель:</span><br/><span className="font-medium">{data.model || '-'}</span></div>
-                                            <div><span className="text-gray-500">Серийный номер:</span><br/><span className="font-mono">{data.serial_number || '-'}</span></div>
-                                            <div><span className="text-gray-500">Состояние:</span><br/><span className={`px-2 py-1 rounded text-xs ${getConditionColor(data.condition)}`}>{data.condition || '-'}</span></div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="bg-gray-50 rounded-lg p-4">
-                                        <h3 className="font-semibold mb-3"><i className="fas fa-map-marker-alt mr-2 text-green-500"></i>Расположение</h3>
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                            <div><span className="text-gray-500">Помещение:</span><br/><span className="font-medium">{data.location || 'Не указано'}</span></div>
-                                            <div><span className="text-gray-500">Ответственный:</span><br/><span className="font-medium">{data.responsible || 'Не назначен'}</span></div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="bg-gray-50 rounded-lg p-4">
-                                        <h3 className="font-semibold mb-3"><i className="fas fa-ruble-sign mr-2 text-yellow-500"></i>Финансовая информация</h3>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                                            <div><span className="text-gray-500">Цена покупки:</span><br/><span className="font-medium">{formatMoney(data.purchase_price)}</span></div>
-                                            <div><span className="text-gray-500">Текущая стоимость:</span><br/><span className="font-medium text-green-600">{formatMoney(data.current_value || data.price)}</span></div>
-                                            <div><span className="text-gray-500">Дата покупки:</span><br/><span className="font-medium">{formatDate(data.purchase_date)}</span></div>
-                                            <div><span className="text-gray-500">Гарантия до:</span><br/><span className="font-medium">{formatDate(data.warranty_until)}</span></div>
-                                        </div>
-                                    </div>
-                                    
-                                    {data.description && (
+                            <>
+                                {/* Вкладка: Информация */}
+                                {activeTab === 'info' && (
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                         <div className="bg-gray-50 rounded-lg p-4">
-                                            <h3 className="font-semibold mb-2"><i className="fas fa-comment mr-2 text-purple-500"></i>Описание</h3>
-                                            <p className="text-sm text-gray-700">{data.description}</p>
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                    <h3 className="font-semibold mb-3"><i className="fas fa-history mr-2 text-purple-500"></i>История изменений</h3>
-                                    <div className="max-h-96 overflow-y-auto">
-                                        {history.length > 0 ? history.map((h, i) => (
-                                            <div key={i} className="history-item text-sm mb-3">
-                                                <div className="flex justify-between items-start">
-                                                    <span className={`px-2 py-0.5 rounded text-xs ${
-                                                        h.change_type === 'создание' ? 'bg-green-100 text-green-800' :
-                                                        h.change_type === 'списание' ? 'bg-red-100 text-red-800' :
-                                                        'bg-blue-100 text-blue-800'
-                                                    }`}>{getChangeTypeLabel(h.change_type)}</span>
-                                                    <span className="text-xs text-gray-400">{formatDateTime(h.change_date)}</span>
-                                                </div>
-                                                {h.reason && <p className="text-gray-600 mt-1 text-xs">{h.reason}</p>}
+                                            <h3 className="font-semibold mb-3"><i className="fas fa-barcode mr-2 text-blue-500"></i>Идентификация</h3>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between"><span className="text-gray-500">Инв. номер:</span><span className="font-mono font-medium">{data.inventory_number}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Серийный номер:</span><span className="font-mono">{data.serial_number || '-'}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Категория:</span><span>{data.category || '-'}</span></div>
                                             </div>
-                                        )) : <p className="text-center text-gray-400 py-4 text-sm">Нет записей</p>}
+                                        </div>
+                                        <div className="bg-gray-50 rounded-lg p-4">
+                                            <h3 className="font-semibold mb-3"><i className="fas fa-industry mr-2 text-gray-500"></i>Характеристики</h3>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between"><span className="text-gray-500">Производитель:</span><span>{data.manufacturer || '-'}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Модель:</span><span>{data.model || '-'}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Состояние:</span><span className={`px-2 py-0.5 rounded text-xs ${getConditionColor(data.condition)}`}>{data.condition || '-'}</span></div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-lg p-4">
+                                            <h3 className="font-semibold mb-3"><i className="fas fa-map-marker-alt mr-2 text-green-500"></i>Расположение</h3>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between"><span className="text-gray-500">Помещение:</span><span>{data.location || 'Не указано'}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Ответственный:</span><span>{data.responsible || 'Не назначен'}</span></div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-lg p-4">
+                                            <h3 className="font-semibold mb-3"><i className="fas fa-calendar mr-2 text-orange-500"></i>Даты</h3>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between"><span className="text-gray-500">Дата покупки:</span><span>{formatDate(data.purchase_date)}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Ввод в эксплуатацию:</span><span>{formatDate(data.commissioning_date)}</span></div>
+                                                <div className="flex justify-between"><span className="text-gray-500">Гарантия до:</span><span>{formatDate(data.warranty_until)}</span></div>
+                                            </div>
+                                        </div>
+                                        {data.description && (
+                                            <div className="bg-gray-50 rounded-lg p-4 lg:col-span-2">
+                                                <h3 className="font-semibold mb-2"><i className="fas fa-comment mr-2 text-purple-500"></i>Описание</h3>
+                                                <p className="text-sm text-gray-700">{data.description}</p>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            </div>
+                                )}
+                                
+                                {/* Вкладка: Финансы и история цен */}
+                                {activeTab === 'finance' && (
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="bg-blue-50 rounded-lg p-4 text-center">
+                                                <p className="text-gray-500 text-sm">Цена покупки</p>
+                                                <p className="text-2xl font-bold text-blue-600">{formatMoney(data.purchase_price)}</p>
+                                            </div>
+                                            <div className="bg-green-50 rounded-lg p-4 text-center">
+                                                <p className="text-gray-500 text-sm">Текущая стоимость</p>
+                                                <p className="text-2xl font-bold text-green-600">{formatMoney(data.current_value || data.price)}</p>
+                                            </div>
+                                            <div className="bg-orange-50 rounded-lg p-4 text-center">
+                                                <p className="text-gray-500 text-sm">Амортизация</p>
+                                                <p className="text-2xl font-bold text-orange-600">
+                                                    {data.purchase_price ? Math.round((1 - (data.current_value || 0) / data.purchase_price) * 100) : 0}%
+                                                </p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-gray-50 rounded-lg p-4">
+                                            <h3 className="font-semibold mb-3"><i className="fas fa-chart-line mr-2 text-purple-500"></i>История изменения стоимости</h3>
+                                            {priceHistory.length > 0 ? (
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-sm">
+                                                        <thead className="bg-gray-100">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left">Дата</th>
+                                                                <th className="px-3 py-2 text-right">Было</th>
+                                                                <th className="px-3 py-2 text-center"></th>
+                                                                <th className="px-3 py-2 text-right">Стало</th>
+                                                                <th className="px-3 py-2 text-right">Изменение</th>
+                                                                <th className="px-3 py-2 text-left">Причина</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {priceHistory.map((h, i) => {
+                                                                const oldP = parseFloat(h.old_price) || 0;
+                                                                const newP = parseFloat(h.new_price) || 0;
+                                                                const diff = newP - oldP;
+                                                                const diffPercent = oldP ? Math.round((diff / oldP) * 100) : 0;
+                                                                return (
+                                                                    <tr key={i} className="border-t">
+                                                                        <td className="px-3 py-2">{formatDate(h.change_date)}</td>
+                                                                        <td className="px-3 py-2 text-right font-mono">{h.old_price ? formatMoney(h.old_price) : '-'}</td>
+                                                                        <td className="px-3 py-2 text-center text-gray-400">→</td>
+                                                                        <td className="px-3 py-2 text-right font-mono font-medium">{formatMoney(h.new_price)}</td>
+                                                                        <td className={`px-3 py-2 text-right font-mono ${diff < 0 ? 'text-red-600' : diff > 0 ? 'text-green-600' : ''}`}>
+                                                                            {h.old_price ? `${diff > 0 ? '+' : ''}${diffPercent}%` : '-'}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-gray-600 text-xs">{h.reason || h.notes || '-'}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            ) : <p className="text-center text-gray-400 py-4">Нет записей об изменении стоимости</p>}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {/* Вкладка: Перемещения */}
+                                {activeTab === 'movements' && (
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <h3 className="font-semibold mb-3"><i className="fas fa-route mr-2 text-blue-500"></i>История перемещений и смены ответственных</h3>
+                                        {movementHistory.length > 0 ? (
+                                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                                {movementHistory.map((h, i) => (
+                                                    <div key={i} className="bg-white rounded p-3 border-l-4 border-blue-400">
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <span className={`px-2 py-0.5 rounded text-xs ${h.change_type === 'перемещение' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                                                                {getChangeTypeLabel(h.change_type)}
+                                                            </span>
+                                                            <span className="text-xs text-gray-400">{formatDateTime(h.change_date)}</span>
+                                                        </div>
+                                                        {h.change_type === 'перемещение' && (
+                                                            <p className="text-sm mt-1">
+                                                                <span className="text-gray-500">{h.old_premise_building ? `${h.old_premise_building}, ${h.old_premise_number}` : 'Не указано'}</span>
+                                                                <span className="mx-2">→</span>
+                                                                <span className="font-medium">{h.new_premise_building ? `${h.new_premise_building}, ${h.new_premise_number}` : 'Не указано'}</span>
+                                                            </p>
+                                                        )}
+                                                        {h.change_type === 'смена_ответственного' && (
+                                                            <p className="text-sm mt-1">
+                                                                <span className="text-gray-500">{h.old_responsible_name || 'Не назначен'}</span>
+                                                                <span className="mx-2">→</span>
+                                                                <span className="font-medium">{h.new_responsible_name || 'Не назначен'}</span>
+                                                            </p>
+                                                        )}
+                                                        {h.reason && <p className="text-xs text-gray-500 mt-1">{h.reason}</p>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : <p className="text-center text-gray-400 py-4">Нет записей о перемещениях</p>}
+                                    </div>
+                                )}
+                                
+                                {/* Вкладка: Вся история */}
+                                {activeTab === 'history' && (
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <h3 className="font-semibold mb-3"><i className="fas fa-history mr-2 text-purple-500"></i>Полная история изменений ({history.length} записей)</h3>
+                                        <div className="max-h-96 overflow-y-auto space-y-2">
+                                            {history.length > 0 ? history.map((h, i) => (
+                                                <div key={i} className="bg-white rounded p-3 border-l-4" style={{borderColor: 
+                                                    h.change_type === 'создание' ? '#22c55e' :
+                                                    h.change_type === 'списание' ? '#ef4444' :
+                                                    h.change_type === 'изменение_цены' ? '#f59e0b' :
+                                                    h.change_type === 'перемещение' ? '#3b82f6' :
+                                                    h.change_type === 'смена_ответственного' ? '#8b5cf6' :
+                                                    h.change_type === 'смена_состояния' ? '#06b6d4' : '#6b7280'
+                                                }}>
+                                                    <div className="flex justify-between items-start">
+                                                        <span className={`px-2 py-0.5 rounded text-xs ${
+                                                            h.change_type === 'создание' ? 'bg-green-100 text-green-800' :
+                                                            h.change_type === 'списание' ? 'bg-red-100 text-red-800' :
+                                                            h.change_type === 'изменение_цены' ? 'bg-yellow-100 text-yellow-800' :
+                                                            'bg-blue-100 text-blue-800'
+                                                        }`}>{getChangeTypeLabel(h.change_type)}</span>
+                                                        <span className="text-xs text-gray-400">{formatDateTime(h.change_date)}</span>
+                                                    </div>
+                                                    {h.reason && <p className="text-sm text-gray-600 mt-1">{h.reason}</p>}
+                                                    {h.notes && <p className="text-xs text-gray-500 mt-1">{h.notes}</p>}
+                                                    {h.old_price && h.new_price && (
+                                                        <p className="text-xs mt-1"><span className="text-gray-500">Стоимость:</span> {formatMoney(h.old_price)} → {formatMoney(h.new_price)}</p>
+                                                    )}
+                                                    {h.new_premise_number && (
+                                                        <p className="text-xs mt-1"><span className="text-gray-500">Помещение:</span> → {h.new_premise_building}, {h.new_premise_number}</p>
+                                                    )}
+                                                    {h.new_responsible_name && (
+                                                        <p className="text-xs mt-1"><span className="text-gray-500">Ответственный:</span> → {h.new_responsible_name}</p>
+                                                    )}
+                                                    {h.new_condition_name && (
+                                                        <p className="text-xs mt-1"><span className="text-gray-500">Состояние:</span> → {h.new_condition_name}</p>
+                                                    )}
+                                                </div>
+                                            )) : <p className="text-center text-gray-400 py-4">Нет записей в истории</p>}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>

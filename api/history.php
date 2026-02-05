@@ -54,6 +54,8 @@ function getEquipmentHistory($equipment_id) {
             h.change_date,
             h.old_value,
             h.new_value,
+            h.old_price,
+            h.new_price,
             h.reason,
             h.notes,
             e.inventory_number,

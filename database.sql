@@ -1,7 +1,7 @@
 -- =============================================
 -- Информационная система учета МТБ колледжа
--- MySQL-совместимый дамп - ВЕРСИЯ 2.0
--- Добавлена полная история изменений и расширенный функционал
+-- MySQL-совместимый дамп - ВЕРСИЯ 3.0
+-- Полная демонстрационная версия с историей изменений
 -- =============================================
 
 DROP DATABASE IF EXISTS `college_mtb`;
@@ -51,25 +51,6 @@ CREATE TABLE `condition_status` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
--- ТАБЛИЦА: premises (Помещения)
--- =============================================
-CREATE TABLE `premises` (
-  `id` INT NOT NULL AUTO_INCREMENT,
-  `room_number` VARCHAR(20) NOT NULL,
-  `building` VARCHAR(50) NOT NULL,
-  `floor` VARCHAR(10) DEFAULT NULL,
-  `room_type` VARCHAR(50) DEFAULT NULL,
-  `area` DECIMAL(10,2) DEFAULT NULL,
-  `capacity` INT DEFAULT NULL,
-  `responsible_id` INT DEFAULT NULL,
-  `status` ENUM('активное','ремонт','закрыто') NOT NULL DEFAULT 'активное',
-  `description` TEXT DEFAULT NULL,
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- =============================================
 -- ТАБЛИЦА: employees (Сотрудники)
 -- =============================================
 CREATE TABLE `employees` (
@@ -86,9 +67,25 @@ CREATE TABLE `employees` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Внешний ключ для ответственного за помещение
-ALTER TABLE `premises` ADD CONSTRAINT `fk_premises_responsible` 
-  FOREIGN KEY (`responsible_id`) REFERENCES `employees`(`id`) ON DELETE SET NULL;
+-- =============================================
+-- ТАБЛИЦА: premises (Помещения)
+-- =============================================
+CREATE TABLE `premises` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `room_number` VARCHAR(20) NOT NULL,
+  `building` VARCHAR(50) NOT NULL,
+  `floor` VARCHAR(10) DEFAULT NULL,
+  `room_type` VARCHAR(50) DEFAULT NULL,
+  `area` DECIMAL(10,2) DEFAULT NULL,
+  `capacity` INT DEFAULT NULL,
+  `responsible_id` INT DEFAULT NULL,
+  `status` ENUM('активное','ремонт','закрыто') NOT NULL DEFAULT 'активное',
+  `description` TEXT DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_premises_responsible` FOREIGN KEY (`responsible_id`) REFERENCES `employees`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
 -- ТАБЛИЦА: equipment (Оборудование)
@@ -128,7 +125,6 @@ CREATE TABLE `equipment` (
 
 -- =============================================
 -- ТАБЛИЦА: equipment_history (История изменений оборудования)
--- Центральная таблица для отслеживания ВСЕХ изменений
 -- =============================================
 CREATE TABLE `equipment_history` (
   `id` INT NOT NULL AUTO_INCREMENT,
@@ -138,6 +134,7 @@ CREATE TABLE `equipment_history` (
     'перемещение',
     'смена_ответственного',
     'смена_состояния',
+    'изменение_цены',
     'редактирование',
     'списание',
     'восстановление',
@@ -152,6 +149,8 @@ CREATE TABLE `equipment_history` (
   `new_responsible_id` INT DEFAULT NULL,
   `old_condition_id` INT DEFAULT NULL,
   `new_condition_id` INT DEFAULT NULL,
+  `old_price` DECIMAL(12,2) DEFAULT NULL,
+  `new_price` DECIMAL(12,2) DEFAULT NULL,
   `reason` VARCHAR(500) DEFAULT NULL,
   `performed_by` INT DEFAULT NULL,
   `notes` TEXT DEFAULT NULL,
@@ -166,26 +165,6 @@ CREATE TABLE `equipment_history` (
   CONSTRAINT `fk_history_old_responsible` FOREIGN KEY (`old_responsible_id`) REFERENCES `employees`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_history_new_responsible` FOREIGN KEY (`new_responsible_id`) REFERENCES `employees`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_history_performed_by` FOREIGN KEY (`performed_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- =============================================
--- ТАБЛИЦА: movements (Перемещения оборудования - для обратной совместимости)
--- =============================================
-CREATE TABLE `movements` (
-  `id` INT NOT NULL AUTO_INCREMENT,
-  `equipment_id` INT NOT NULL,
-  `from_premise_id` INT DEFAULT NULL,
-  `to_premise_id` INT DEFAULT NULL,
-  `movement_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `reason` VARCHAR(500) DEFAULT NULL,
-  `responsible_id` INT DEFAULT NULL,
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_movements_equipment` (`equipment_id`),
-  CONSTRAINT `fk_movements_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipment`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_movements_from_premise` FOREIGN KEY (`from_premise_id`) REFERENCES `premises`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_movements_to_premise` FOREIGN KEY (`to_premise_id`) REFERENCES `premises`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_movements_responsible` FOREIGN KEY (`responsible_id`) REFERENCES `employees`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
@@ -212,230 +191,240 @@ CREATE TABLE `inventories` (
 CREATE TABLE `inventory_items` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `inventory_id` INT NOT NULL,
-  `equipment_id` INT DEFAULT NULL,
+  `equipment_id` INT NOT NULL,
   `expected_location_id` INT DEFAULT NULL,
   `actual_location_id` INT DEFAULT NULL,
   `expected_condition_id` INT DEFAULT NULL,
   `actual_condition_id` INT DEFAULT NULL,
   `status` ENUM('не проверено','совпадает','расхождение','не найдено') NOT NULL DEFAULT 'не проверено',
-  `notes` VARCHAR(500) DEFAULT NULL,
+  `notes` TEXT DEFAULT NULL,
   `checked_at` DATETIME DEFAULT NULL,
   `checked_by` INT DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_inventory_items_inventory` (`inventory_id`),
-  CONSTRAINT `fk_inventory_items_inventory` FOREIGN KEY (`inventory_id`) REFERENCES `inventories`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_inventory_items_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipment`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_inventory_items_expected_loc` FOREIGN KEY (`expected_location_id`) REFERENCES `premises`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_inventory_items_actual_loc` FOREIGN KEY (`actual_location_id`) REFERENCES `premises`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_inventory_items_expected_cond` FOREIGN KEY (`expected_condition_id`) REFERENCES `condition_status`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_inventory_items_actual_cond` FOREIGN KEY (`actual_condition_id`) REFERENCES `condition_status`(`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_inventory_items_checked_by` FOREIGN KEY (`checked_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
+  KEY `idx_inv_items_inventory` (`inventory_id`),
+  KEY `idx_inv_items_equipment` (`equipment_id`),
+  CONSTRAINT `fk_inv_items_inventory` FOREIGN KEY (`inventory_id`) REFERENCES `inventories`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_inv_items_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipment`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
--- ТАБЛИЦА: write_offs (Списание оборудования)
+-- ТАБЛИЦА: write_offs (Акты списания)
 -- =============================================
 CREATE TABLE `write_offs` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `equipment_id` INT NOT NULL,
   `write_off_date` DATE NOT NULL,
-  `reason` VARCHAR(500) NOT NULL,
-  `document_number` VARCHAR(100) DEFAULT NULL,
-  `document_date` DATE DEFAULT NULL,
-  `residual_value` DECIMAL(12,2) DEFAULT NULL,
+  `reason` TEXT NOT NULL,
+  `document_number` VARCHAR(50) DEFAULT NULL,
+  `residual_value` DECIMAL(12,2) DEFAULT 0.00,
   `approved_by` INT DEFAULT NULL,
   `notes` TEXT DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_writeoffs_equipment` (`equipment_id`),
   CONSTRAINT `fk_writeoffs_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipment`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_writeoffs_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `employees`(`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_writeoffs_approved` FOREIGN KEY (`approved_by`) REFERENCES `employees`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =============================================
--- ДЕМО-ДАННЫЕ
+-- НАЧАЛЬНЫЕ ДАННЫЕ
 -- =============================================
 
--- Пользователи (пароль: 123456)
-INSERT INTO users (username, password_hash, full_name, email, role) VALUES
-('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Администратор Системы', 'admin@college.ru', 'admin'),
-('user1', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Иванов Иван Иванович', 'ivanov@college.ru', 'user');
+-- Пользователи
+INSERT INTO `users` (`username`, `password_hash`, `full_name`, `email`, `role`) VALUES
+('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Администратор системы', 'admin@college.ru', 'admin'),
+('ivanov', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Иванов И.И.', 'ivanov@college.ru', 'user'),
+('petrov', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Петров П.П.', 'petrov@college.ru', 'user');
 
--- Категории
-INSERT INTO categories (name, code, description) VALUES
-('Компьютерная техника', 'COMP', 'Компьютеры, ноутбуки, серверы'),
-('Офисная техника', 'OFFICE', 'Принтеры, сканеры, МФУ'),
-('Мебель', 'FURN', 'Столы, стулья, шкафы'),
-('Лабораторное оборудование', 'LAB', 'Измерительные приборы, стенды'),
-('Проекционное оборудование', 'PROJ', 'Проекторы, экраны'),
-('Аудио-видео техника', 'AV', 'Колонки, микрофоны, камеры'),
-('Спортивное оборудование', 'SPORT', 'Тренажеры, мячи, маты'),
-('Учебное оборудование', 'EDU', 'Учебные пособия, макеты, стенды');
+-- Категории (только офисная техника)
+INSERT INTO `categories` (`id`, `name`, `code`, `description`) VALUES
+(1, 'Офисная техника', 'OT', 'Принтеры, сканеры, МФУ, копиры и другая офисная техника'),
+(2, 'Офисная техника', 'OT2', 'Телефоны, факсы, шредеры');
 
 -- Статусы состояния
-INSERT INTO condition_status (name, description, color_class) VALUES
-('Отличное', 'Новое или почти новое оборудование', 'green'),
-('Хорошее', 'Рабочее состояние, незначительный износ', 'blue'),
-('Удовлетворительное', 'Работает, но требует внимания', 'yellow'),
-('Требует ремонта', 'Неисправно или сильно изношено', 'orange'),
-('Списано', 'Не подлежит использованию', 'red');
+INSERT INTO `condition_status` (`id`, `name`, `description`, `color_class`) VALUES
+(1, 'Отличное', 'Новое или как новое оборудование', 'green'),
+(2, 'Хорошее', 'Рабочее состояние, незначительный износ', 'blue'),
+(3, 'Удовлетворительное', 'Работает, но есть заметный износ', 'yellow'),
+(4, 'Требует ремонта', 'Необходим ремонт или техобслуживание', 'orange'),
+(5, 'Списано', 'Оборудование списано', 'red');
 
 -- Сотрудники
-INSERT INTO employees (full_name, position, department, phone, email, hire_date, is_active) VALUES
-('Иванов Иван Иванович', 'Заведующий хозяйством', 'Административный отдел', '+7-999-111-2233', 'ivanov@college.ru', '2015-09-01', 1),
-('Петрова Мария Сергеевна', 'Заведующая лабораторией', 'Техническое отделение', '+7-999-222-3344', 'petrova@college.ru', '2018-02-15', 1),
-('Сидоров Петр Алексеевич', 'Системный администратор', 'IT-отдел', '+7-999-333-4455', 'sidorov@college.ru', '2020-08-01', 1),
-('Козлова Анна Дмитриевна', 'Библиотекарь', 'Библиотека', '+7-999-444-5566', 'kozlova@college.ru', '2017-03-20', 1),
-('Морозов Дмитрий Николаевич', 'Преподаватель информатики', 'Отделение информационных технологий', '+7-999-555-6677', 'morozov@college.ru', '2019-09-01', 1);
+INSERT INTO `employees` (`id`, `full_name`, `position`, `department`, `phone`, `email`, `hire_date`) VALUES
+(1, 'Сидорова Анна Петровна', 'Заведующий хозяйственной частью', 'АХО', '+7(495)123-45-01', 'sidorova@college.ru', '2018-03-15'),
+(2, 'Козлов Дмитрий Сергеевич', 'Системный администратор', 'ИТ-отдел', '+7(495)123-45-02', 'kozlov@college.ru', '2019-09-01'),
+(3, 'Морозова Елена Викторовна', 'Секретарь', 'Приёмная', '+7(495)123-45-03', 'morozova@college.ru', '2020-01-10'),
+(4, 'Новиков Алексей Иванович', 'Преподаватель информатики', 'Кафедра ИТ', '+7(495)123-45-04', 'novikov@college.ru', '2017-08-20'),
+(5, 'Белова Ольга Николаевна', 'Бухгалтер', 'Бухгалтерия', '+7(495)123-45-05', 'belova@college.ru', '2016-05-12');
 
--- Помещения (с ответственными)
-INSERT INTO premises (room_number, building, floor, room_type, area, capacity, status, responsible_id, description) VALUES
-('101', 'Корпус А', '1', 'аудитория', 50.00, 30, 'активное', 1, 'Аудитория для лекционных занятий'),
-('102', 'Корпус А', '1', 'лаборатория', 65.00, 15, 'активное', 2, 'Лаборатория физики'),
-('201', 'Корпус А', '2', 'аудитория', 48.00, 25, 'активное', 1, 'Аудитория для семинаров'),
-('202', 'Корпус А', '2', 'компьютерный класс', 60.00, 20, 'активное', 3, 'Компьютерный класс №1'),
-('203', 'Корпус А', '2', 'компьютерный класс', 55.00, 18, 'активное', 3, 'Компьютерный класс №2'),
-('Склад-1', 'Корпус Б', '1', 'склад', 80.00, NULL, 'активное', 1, 'Основной склад оборудования'),
-('Спортзал', 'Корпус Б', '1', 'спортзал', 200.00, 50, 'активное', 1, 'Спортивный зал'),
-('Библиотека', 'Корпус А', '1', 'библиотека', 120.00, 40, 'активное', 4, 'Главная библиотека колледжа');
+-- Помещения
+INSERT INTO `premises` (`id`, `room_number`, `building`, `floor`, `room_type`, `area`, `capacity`, `responsible_id`, `status`) VALUES
+(1, '101', 'Главный корпус', '1', 'Приёмная', 25.00, 5, 3, 'активное'),
+(2, '102', 'Главный корпус', '1', 'Бухгалтерия', 30.00, 4, 5, 'активное'),
+(3, '201', 'Главный корпус', '2', 'Серверная', 15.00, 2, 2, 'активное'),
+(4, '202', 'Главный корпус', '2', 'Компьютерный класс', 60.00, 25, 4, 'активное'),
+(5, '301', 'Главный корпус', '3', 'Кабинет АХО', 20.00, 3, 1, 'активное'),
+(6, '103', 'Главный корпус', '1', 'Канцелярия', 18.00, 3, 3, 'активное');
 
--- Оборудование
-INSERT INTO equipment (inventory_number, name, category_id, premise_id, responsible_id, purchase_date, purchase_price, current_value, condition_id, manufacturer, model, serial_number, commissioning_date) VALUES
-('INV-2023-001', 'Компьютер преподавателя', 1, 1, 1, '2023-03-15', 45000.00, 45000.00, 2, 'ASUS', 'VivoBook X515', 'SN-VB-001', '2023-03-20'),
-('INV-2023-002', 'Проектор мультимедийный', 5, 1, 1, '2023-04-20', 35000.00, 35000.00, 2, 'Epson', 'EB-X41', 'SN-EP-002', '2023-04-25'),
-('INV-2022-015', 'МФУ лазерное', 2, 2, 2, '2022-09-10', 25000.00, 22000.00, 2, 'HP', 'LaserJet Pro M428', 'SN-HP-015', '2022-09-15'),
-('INV-2024-101', 'Компьютер студенческий #1', 1, 4, 3, '2024-01-15', 38000.00, 38000.00, 1, 'Dell', 'OptiPlex 3080', 'SN-DL-101', '2024-01-20'),
-('INV-2024-102', 'Компьютер студенческий #2', 1, 4, 3, '2024-01-15', 38000.00, 38000.00, 1, 'Dell', 'OptiPlex 3080', 'SN-DL-102', '2024-01-20'),
-('INV-2024-103', 'Компьютер студенческий #3', 1, 4, 3, '2024-01-15', 38000.00, 38000.00, 1, 'Dell', 'OptiPlex 3080', 'SN-DL-103', '2024-01-20'),
-('INV-2024-104', 'Компьютер студенческий #4', 1, 5, 3, '2024-01-15', 38000.00, 38000.00, 1, 'Dell', 'OptiPlex 3080', 'SN-DL-104', '2024-01-20'),
-('INV-2024-105', 'Компьютер студенческий #5', 1, 5, 3, '2024-01-15', 38000.00, 38000.00, 1, 'Dell', 'OptiPlex 3080', 'SN-DL-105', '2024-01-20'),
-('INV-2021-050', 'Стол ученический двухместный', 3, 1, 1, '2021-08-20', 4500.00, 3500.00, 2, 'МебельПром', 'СТ-2М', NULL, '2021-08-25'),
-('INV-2021-051', 'Стул ученический', 3, 1, 1, '2021-08-20', 1200.00, 800.00, 3, 'МебельПром', 'СТУ-1', NULL, '2021-08-25'),
-('INV-2023-200', 'Осциллограф цифровой', 4, 2, 2, '2023-05-10', 85000.00, 82000.00, 2, 'Rigol', 'DS1054Z', 'SN-RG-200', '2023-05-15'),
-('INV-2020-300', 'Интерактивная доска', 5, 4, 3, '2020-08-15', 120000.00, 90000.00, 2, 'SMART', 'Board 885', 'SN-SM-300', '2020-08-20'),
-('INV-2019-400', 'Принтер лазерный', 2, 8, 4, '2019-03-10', 15000.00, 8000.00, 3, 'Canon', 'LBP6030', 'SN-CN-400', '2019-03-15');
+-- Оборудование (офисная техника)
+INSERT INTO `equipment` (`id`, `inventory_number`, `name`, `category_id`, `premise_id`, `responsible_id`, `purchase_date`, `purchase_price`, `current_value`, `condition_id`, `manufacturer`, `model`, `serial_number`, `description`, `warranty_until`, `commissioning_date`) VALUES
+(1, 'ОТ-2021-001', 'МФУ лазерное', 1, 1, 3, '2021-03-15', 45000.00, 32000.00, 2, 'HP', 'LaserJet Pro M428fdn', 'VNC3X12345', 'Многофункциональное устройство: печать, копирование, сканирование, факс', '2024-03-15', '2021-03-20'),
+(2, 'ОТ-2021-002', 'Принтер лазерный ч/б', 1, 2, 5, '2021-05-10', 18000.00, 12000.00, 2, 'Brother', 'HL-L2340DW', 'U64051C1N123456', 'Лазерный принтер для бухгалтерии', '2024-05-10', '2021-05-15'),
+(3, 'ОТ-2022-001', 'МФУ цветное струйное', 1, 4, 4, '2022-01-20', 35000.00, 28000.00, 1, 'Epson', 'L6190', 'X5WY123456', 'Цветное МФУ для компьютерного класса', '2025-01-20', '2022-01-25'),
+(4, 'ОТ-2020-001', 'Принтер матричный', 1, 2, 5, '2020-02-10', 25000.00, 8000.00, 3, 'Epson', 'LX-350', 'MSNY012345', 'Для печати на бланках строгой отчётности', '2023-02-10', '2020-02-15'),
+(5, 'ОТ-2023-001', 'МФУ лазерное цветное', 1, 5, 1, '2023-06-01', 85000.00, 78000.00, 1, 'Canon', 'i-SENSYS MF746Cx', 'LBP123456789', 'Цветное МФУ для АХО', '2026-06-01', '2023-06-05'),
+(6, 'ОТ-2021-003', 'Сканер планшетный', 1, 1, 3, '2021-04-05', 12000.00, 8500.00, 2, 'Canon', 'CanoScan LiDE 400', 'CAND123456', 'Планшетный сканер А4', '2024-04-05', '2021-04-10'),
+(7, 'ОТ-2022-002', 'Сканер потоковый', 1, 2, 5, '2022-03-15', 45000.00, 38000.00, 1, 'Fujitsu', 'fi-7160', 'FI7123456', 'Высокоскоростной сканер для документооборота', '2025-03-15', '2022-03-20'),
+(8, 'ОТ-2019-001', 'Копировальный аппарат', 1, 6, 3, '2019-11-20', 120000.00, 45000.00, 3, 'Xerox', 'VersaLink B405', 'XRX987654321', 'Копир для канцелярии', '2022-11-20', '2019-11-25'),
+(9, 'ОТ-2022-003', 'Шредер офисный', 1, 2, 5, '2022-07-10', 15000.00, 12000.00, 1, 'Fellowes', 'Powershred 99Ci', 'FEL456789', 'Уничтожитель документов уровень секретности P-4', '2025-07-10', '2022-07-15'),
+(10, 'ОТ-2020-002', 'Шредер персональный', 1, 5, 1, '2020-09-05', 8000.00, 4000.00, 2, 'HSM', 'shredstar X5', 'HSM789012', 'Персональный шредер', '2023-09-05', '2020-09-10'),
+(11, 'ОТ-2021-004', 'Телефон IP', 1, 1, 3, '2021-02-01', 8500.00, 6000.00, 2, 'Grandstream', 'GXP1625', 'GXP123456', 'IP-телефон для приёмной', '2024-02-01', '2021-02-05'),
+(12, 'ОТ-2021-005', 'Телефон IP', 1, 2, 5, '2021-02-01', 8500.00, 6000.00, 2, 'Grandstream', 'GXP1625', 'GXP123457', 'IP-телефон для бухгалтерии', '2024-02-01', '2021-02-05'),
+(13, 'ОТ-2023-002', 'Телефон IP с видео', 1, 5, 1, '2023-04-15', 25000.00, 23000.00, 1, 'Yealink', 'T58W', 'YEA789012', 'IP-телефон с видеосвязью для АХО', '2026-04-15', '2023-04-20'),
+(14, 'ОТ-2022-004', 'Ламинатор офисный', 1, 6, 3, '2022-05-20', 12000.00, 9500.00, 1, 'Fellowes', 'Saturn 3i A3', 'FEL321654', 'Ламинатор А3 для канцелярии', '2025-05-20', '2022-05-25'),
+(15, 'ОТ-2018-001', 'Принтер лазерный устаревший', 1, NULL, NULL, '2018-06-10', 22000.00, 0.00, 5, 'HP', 'LaserJet P2055d', 'VNB4567890', 'Списан по износу', '2021-06-10', '2018-06-15');
 
--- История оборудования (примеры)
-INSERT INTO equipment_history (equipment_id, change_type, change_date, old_value, new_value, reason, performed_by, notes) VALUES
-(1, 'создание', '2023-03-15 10:00:00', NULL, 'Компьютер преподавателя', 'Закупка нового оборудования', 1, 'Первичная постановка на учет'),
-(1, 'перемещение', '2023-03-20 14:30:00', NULL, 'Корпус А, 101', 1, 'Установка на рабочее место', 1, 'Перемещено со склада'),
-(4, 'создание', '2024-01-15 09:00:00', NULL, 'Компьютер студенческий #1', 'Обновление компьютерного класса', 1, 'Поставка новых ПК'),
-(4, 'смена_состояния', '2024-06-01 11:00:00', 'Отличное', 'Хорошее', 1, 'Плановая проверка', 1, 'Незначительный износ после эксплуатации');
-
--- Обновляем историю с правильными связями
-UPDATE equipment_history SET new_premise_id = 1 WHERE equipment_id = 1 AND change_type = 'перемещение';
-UPDATE equipment_history SET old_condition_id = 1, new_condition_id = 2 WHERE equipment_id = 4 AND change_type = 'смена_состояния';
-
--- Инвентаризации
-INSERT INTO inventories (inventory_number, start_date, end_date, status, responsible_id, notes) VALUES
-('ИНВ-2024-001', '2024-01-15', '2024-01-25', 'завершена', 1, 'Плановая инвентаризация начала года'),
-('ИНВ-2024-002', '2024-06-01', NULL, 'в процессе', 1, 'Инвентаризация компьютерных классов');
+-- Обновляем списанное оборудование
+UPDATE `equipment` SET `is_active` = 0, `decommissioning_date` = '2024-01-15', `decommissioning_reason` = 'Физический износ, нецелесообразность ремонта' WHERE `id` = 15;
 
 -- =============================================
--- ПРЕДСТАВЛЕНИЯ (VIEWS)
+-- ИСТОРИЯ ИЗМЕНЕНИЙ (демонстрационные данные)
 -- =============================================
 
-CREATE VIEW `vw_equipment_details` AS
+-- Создание оборудования
+INSERT INTO `equipment_history` (`equipment_id`, `change_type`, `change_date`, `new_value`, `new_premise_id`, `new_responsible_id`, `new_condition_id`, `new_price`, `reason`, `notes`) VALUES
+(1, 'создание', '2021-03-20 09:00:00', 'МФУ лазерное HP LaserJet Pro M428fdn', 1, 3, 1, 45000.00, 'Закупка по контракту №15-2021', 'Инв. номер: ОТ-2021-001'),
+(2, 'создание', '2021-05-15 10:30:00', 'Принтер лазерный ч/б Brother HL-L2340DW', 2, 5, 1, 18000.00, 'Закупка по контракту №22-2021', 'Инв. номер: ОТ-2021-002'),
+(3, 'создание', '2022-01-25 11:00:00', 'МФУ цветное струйное Epson L6190', 4, 4, 1, 35000.00, 'Закупка по контракту №03-2022', 'Инв. номер: ОТ-2022-001'),
+(4, 'создание', '2020-02-15 09:30:00', 'Принтер матричный Epson LX-350', 2, 5, 1, 25000.00, 'Закупка для бухгалтерии', 'Инв. номер: ОТ-2020-001'),
+(5, 'создание', '2023-06-05 14:00:00', 'МФУ лазерное цветное Canon i-SENSYS MF746Cx', 5, 1, 1, 85000.00, 'Закупка по контракту №45-2023', 'Инв. номер: ОТ-2023-001'),
+(6, 'создание', '2021-04-10 10:00:00', 'Сканер планшетный Canon CanoScan LiDE 400', 1, 3, 1, 12000.00, 'Закупка по контракту №15-2021', 'Инв. номер: ОТ-2021-003'),
+(7, 'создание', '2022-03-20 09:00:00', 'Сканер потоковый Fujitsu fi-7160', 2, 5, 1, 45000.00, 'Закупка для электронного документооборота', 'Инв. номер: ОТ-2022-002'),
+(8, 'создание', '2019-11-25 11:30:00', 'Копировальный аппарат Xerox VersaLink B405', 6, 3, 1, 120000.00, 'Закупка для канцелярии', 'Инв. номер: ОТ-2019-001'),
+(9, 'создание', '2022-07-15 10:00:00', 'Шредер офисный Fellowes Powershred 99Ci', 2, 5, 1, 15000.00, 'Закупка для защиты персональных данных', 'Инв. номер: ОТ-2022-003'),
+(10, 'создание', '2020-09-10 14:30:00', 'Шредер персональный HSM shredstar X5', 5, 1, 1, 8000.00, 'Закупка для АХО', 'Инв. номер: ОТ-2020-002');
+
+-- Изменения цен (амортизация и переоценка)
+INSERT INTO `equipment_history` (`equipment_id`, `change_type`, `change_date`, `old_price`, `new_price`, `reason`, `notes`) VALUES
+(1, 'изменение_цены', '2022-01-01 00:00:00', 45000.00, 40000.00, 'Ежегодная амортизация', 'Норма амортизации 11%'),
+(1, 'изменение_цены', '2023-01-01 00:00:00', 40000.00, 36000.00, 'Ежегодная амортизация', 'Норма амортизации 10%'),
+(1, 'изменение_цены', '2024-01-01 00:00:00', 36000.00, 32000.00, 'Ежегодная амортизация', 'Норма амортизации 11%'),
+(2, 'изменение_цены', '2022-06-01 00:00:00', 18000.00, 15000.00, 'Ежегодная амортизация', 'Норма амортизации 17%'),
+(2, 'изменение_цены', '2023-06-01 00:00:00', 15000.00, 12000.00, 'Ежегодная амортизация', 'Норма амортизации 20%'),
+(3, 'изменение_цены', '2023-02-01 00:00:00', 35000.00, 32000.00, 'Ежегодная амортизация', 'Норма амортизации 9%'),
+(3, 'изменение_цены', '2024-02-01 00:00:00', 32000.00, 28000.00, 'Ежегодная амортизация', 'Норма амортизации 12%'),
+(4, 'изменение_цены', '2021-03-01 00:00:00', 25000.00, 18000.00, 'Ежегодная амортизация', 'Норма амортизации 28%'),
+(4, 'изменение_цены', '2022-03-01 00:00:00', 18000.00, 12000.00, 'Ежегодная амортизация', 'Норма амортизации 33%'),
+(4, 'изменение_цены', '2023-03-01 00:00:00', 12000.00, 8000.00, 'Ежегодная амортизация', 'Норма амортизации 33%'),
+(8, 'изменение_цены', '2020-12-01 00:00:00', 120000.00, 95000.00, 'Ежегодная амортизация', 'Норма амортизации 21%'),
+(8, 'изменение_цены', '2021-12-01 00:00:00', 95000.00, 70000.00, 'Ежегодная амортизация', 'Норма амортизации 26%'),
+(8, 'изменение_цены', '2022-12-01 00:00:00', 70000.00, 55000.00, 'Ежегодная амортизация', 'Норма амортизации 21%'),
+(8, 'изменение_цены', '2023-12-01 00:00:00', 55000.00, 45000.00, 'Ежегодная амортизация', 'Норма амортизации 18%');
+
+-- Перемещения оборудования
+INSERT INTO `equipment_history` (`equipment_id`, `change_type`, `change_date`, `old_premise_id`, `new_premise_id`, `reason`, `notes`) VALUES
+(4, 'перемещение', '2021-08-15 14:00:00', 6, 2, 'Перемещение в бухгалтерию', 'По заявке №45 от бухгалтерии'),
+(8, 'перемещение', '2022-04-10 10:30:00', 1, 6, 'Перемещение в канцелярию', 'Освобождение места в приёмной');
+
+-- Смена ответственных
+INSERT INTO `equipment_history` (`equipment_id`, `change_type`, `change_date`, `old_responsible_id`, `new_responsible_id`, `reason`, `notes`) VALUES
+(1, 'смена_ответственного', '2022-06-01 09:00:00', 1, 3, 'Смена МОЛ', 'В связи с кадровыми изменениями'),
+(8, 'смена_ответственного', '2022-04-10 10:30:00', 1, 3, 'Смена МОЛ', 'При перемещении в канцелярию');
+
+-- Изменения состояния
+INSERT INTO `equipment_history` (`equipment_id`, `change_type`, `change_date`, `old_condition_id`, `new_condition_id`, `reason`, `notes`) VALUES
+(1, 'смена_состояния', '2023-03-15 11:00:00', 1, 2, 'Плановое техобслуживание', 'Выявлен незначительный износ'),
+(4, 'смена_состояния', '2022-08-20 15:00:00', 2, 3, 'Результат инвентаризации', 'Требуется замена картриджа'),
+(8, 'смена_состояния', '2023-06-10 09:30:00', 2, 3, 'Плановое техобслуживание', 'Износ барабана, рекомендована замена'),
+(10, 'смена_состояния', '2023-11-15 14:00:00', 1, 2, 'Ежегодная проверка', 'Нормальный износ');
+
+-- Списание оборудования
+INSERT INTO `equipment_history` (`equipment_id`, `change_type`, `change_date`, `old_condition_id`, `new_condition_id`, `old_price`, `new_price`, `reason`, `notes`) VALUES
+(15, 'списание', '2024-01-15 10:00:00', 4, 5, 5000.00, 0.00, 'Физический износ, нецелесообразность ремонта', 'Акт списания №5 от 15.01.2024');
+
+-- Запись в таблицу списаний
+INSERT INTO `write_offs` (`equipment_id`, `write_off_date`, `reason`, `document_number`, `residual_value`, `approved_by`, `notes`) VALUES
+(15, '2024-01-15', 'Физический износ барабана и печатающей головки. Стоимость ремонта превышает остаточную стоимость оборудования.', 'Акт №5-2024', 0.00, 1, 'Утилизация в соответствии с экологическими нормами');
+
+-- =============================================
+-- ИНВЕНТАРИЗАЦИЯ (демонстрационные данные)
+-- =============================================
+
+-- Завершённая инвентаризация
+INSERT INTO `inventories` (`id`, `inventory_number`, `start_date`, `end_date`, `status`, `responsible_id`, `notes`) VALUES
+(1, 'ИНВ-2024-001', '2024-01-10', '2024-01-12', 'завершена', 1, 'Плановая годовая инвентаризация офисной техники');
+
+-- Позиции завершённой инвентаризации
+INSERT INTO `inventory_items` (`inventory_id`, `equipment_id`, `expected_location_id`, `actual_location_id`, `expected_condition_id`, `actual_condition_id`, `status`, `notes`, `checked_at`) VALUES
+(1, 1, 1, 1, 2, 2, 'совпадает', NULL, '2024-01-10 10:15:00'),
+(1, 2, 2, 2, 2, 2, 'совпадает', NULL, '2024-01-10 10:30:00'),
+(1, 3, 4, 4, 1, 1, 'совпадает', NULL, '2024-01-10 11:00:00'),
+(1, 4, 2, 2, 3, 3, 'совпадает', 'Рекомендуется замена картриджа', '2024-01-10 10:45:00'),
+(1, 5, 5, 5, 1, 1, 'совпадает', NULL, '2024-01-11 09:00:00'),
+(1, 6, 1, 1, 2, 2, 'совпадает', NULL, '2024-01-10 10:20:00'),
+(1, 7, 2, 2, 1, 1, 'совпадает', NULL, '2024-01-10 10:35:00'),
+(1, 8, 6, 6, 3, 3, 'совпадает', 'Износ барабана 70%', '2024-01-10 11:30:00'),
+(1, 9, 2, 2, 1, 1, 'совпадает', NULL, '2024-01-10 10:40:00'),
+(1, 10, 5, 5, 2, 2, 'совпадает', NULL, '2024-01-11 09:15:00'),
+(1, 11, 1, 1, 2, 2, 'совпадает', NULL, '2024-01-10 10:25:00'),
+(1, 12, 2, 2, 2, 2, 'совпадает', NULL, '2024-01-10 10:50:00'),
+(1, 13, 5, 5, 1, 1, 'совпадает', NULL, '2024-01-11 09:30:00'),
+(1, 14, 6, 6, 1, 1, 'совпадает', NULL, '2024-01-10 11:45:00');
+
+-- Текущая инвентаризация (в процессе) с разными статусами
+INSERT INTO `inventories` (`id`, `inventory_number`, `start_date`, `end_date`, `status`, `responsible_id`, `notes`) VALUES
+(2, 'ИНВ-2025-001', '2025-02-01', NULL, 'в процессе', 2, 'Внеплановая инвентаризация после ремонта в корпусе');
+
+-- Позиции текущей инвентаризации (частично проверено, с расхождениями)
+INSERT INTO `inventory_items` (`inventory_id`, `equipment_id`, `expected_location_id`, `actual_location_id`, `expected_condition_id`, `actual_condition_id`, `status`, `notes`, `checked_at`) VALUES
+(2, 1, 1, 1, 2, 2, 'совпадает', NULL, '2025-02-01 10:00:00'),
+(2, 2, 2, 2, 2, 2, 'совпадает', NULL, '2025-02-01 10:15:00'),
+(2, 3, 4, 4, 1, 2, 'расхождение', 'Состояние хуже ожидаемого - следы использования', '2025-02-01 10:30:00'),
+(2, 4, 2, 6, 3, 3, 'расхождение', 'Находится в канцелярии вместо бухгалтерии', '2025-02-01 10:45:00'),
+(2, 5, 5, 5, 1, 1, 'совпадает', NULL, '2025-02-01 11:00:00'),
+(2, 6, 1, 1, 2, 2, 'совпадает', NULL, '2025-02-01 10:05:00'),
+(2, 7, 2, 2, 1, 1, 'совпадает', NULL, '2025-02-01 10:20:00'),
+(2, 8, 6, NULL, 3, NULL, 'не найдено', 'Копир не обнаружен на месте, проводится розыск', '2025-02-01 11:30:00'),
+(2, 9, 2, 2, 1, 1, 'совпадает', NULL, '2025-02-01 10:25:00'),
+(2, 10, 5, 5, 2, 2, 'совпадает', NULL, '2025-02-01 11:05:00'),
+(2, 11, 1, 1, 2, 2, 'не проверено', NULL, NULL),
+(2, 12, 2, 2, 2, 2, 'не проверено', NULL, NULL),
+(2, 13, 5, 5, 1, 1, 'не проверено', NULL, NULL),
+(2, 14, 6, 6, 1, 1, 'не проверено', NULL, NULL);
+
+-- =============================================
+-- ПРЕДСТАВЛЕНИЕ: Помещения с количеством оборудования
+-- =============================================
+CREATE OR REPLACE VIEW `vw_premises_with_equipment` AS
 SELECT 
-    e.id,
-    e.inventory_number,
-    e.name,
-    e.category_id,
-    e.premise_id,
-    e.responsible_id,
-    e.condition_id,
-    c.name AS category,
+    p.id, p.room_number, p.building, p.floor, p.room_type, 
+    p.area, p.capacity, p.status, p.responsible_id,
+    e.full_name AS responsible_name,
+    (SELECT COUNT(*) FROM equipment eq WHERE eq.premise_id = p.id AND eq.is_active = 1) AS equipment_count
+FROM premises p
+LEFT JOIN employees e ON p.responsible_id = e.id;
+
+-- =============================================
+-- ПРЕДСТАВЛЕНИЕ: Полная информация об оборудовании
+-- =============================================
+CREATE OR REPLACE VIEW `vw_equipment_full` AS
+SELECT 
+    e.id, e.inventory_number, e.name, e.category_id, e.premise_id, e.responsible_id,
+    e.purchase_date, e.purchase_price, e.current_value, e.condition_id,
+    e.manufacturer, e.model, e.serial_number, e.description,
+    e.warranty_until, e.commissioning_date, e.decommissioning_date, e.decommissioning_reason,
+    e.is_active, e.created_at, e.updated_at,
+    c.name AS category_name,
     CONCAT(p.building, ', ', p.room_number) AS location,
-    cs.name AS `condition`,
-    e.current_value AS price,
-    e.purchase_price,
-    e.manufacturer,
-    e.model,
-    e.serial_number,
-    e.purchase_date,
-    e.warranty_until,
-    e.commissioning_date,
-    e.is_active,
-    emp.full_name AS responsible,
-    e.description,
-    e.created_at,
-    e.updated_at
+    cs.name AS condition_name,
+    emp.full_name AS responsible_name
 FROM equipment e
 LEFT JOIN categories c ON e.category_id = c.id
 LEFT JOIN premises p ON e.premise_id = p.id
 LEFT JOIN condition_status cs ON e.condition_id = cs.id
 LEFT JOIN employees emp ON e.responsible_id = emp.id;
 
-CREATE VIEW `vw_premises_with_equipment` AS
-SELECT 
-    p.id,
-    p.room_number,
-    p.building,
-    p.floor,
-    p.room_type,
-    p.area,
-    p.capacity,
-    p.status,
-    p.description,
-    p.responsible_id,
-    emp.full_name AS responsible_name,
-    COUNT(e.id) AS equipment_count,
-    COALESCE(SUM(e.current_value), 0) AS total_value
-FROM premises p
-LEFT JOIN equipment e ON p.id = e.premise_id AND e.is_active = 1
-LEFT JOIN employees emp ON p.responsible_id = emp.id
-GROUP BY p.id, p.room_number, p.building, p.floor, p.room_type, p.area, p.capacity, p.status, p.description, p.responsible_id, emp.full_name;
-
-CREATE VIEW `vw_employees_with_equipment` AS
-SELECT 
-    emp.id,
-    emp.full_name,
-    emp.position,
-    emp.department,
-    emp.phone,
-    emp.email,
-    emp.hire_date,
-    emp.is_active,
-    COUNT(DISTINCT e.id) AS equipment_count,
-    COUNT(DISTINCT p.id) AS premises_count,
-    COALESCE(SUM(e.current_value), 0) AS total_equipment_value
-FROM employees emp
-LEFT JOIN equipment e ON emp.id = e.responsible_id AND e.is_active = 1
-LEFT JOIN premises p ON emp.id = p.responsible_id
-GROUP BY emp.id, emp.full_name, emp.position, emp.department, emp.phone, emp.email, emp.hire_date, emp.is_active;
-
-CREATE VIEW `vw_equipment_history_details` AS
-SELECT 
-    h.id,
-    h.equipment_id,
-    h.change_type,
-    h.change_date,
-    h.old_value,
-    h.new_value,
-    h.reason,
-    h.notes,
-    e.inventory_number,
-    e.name AS equipment_name,
-    op.room_number AS old_premise_number,
-    op.building AS old_premise_building,
-    np.room_number AS new_premise_number,
-    np.building AS new_premise_building,
-    oe.full_name AS old_responsible_name,
-    ne.full_name AS new_responsible_name,
-    oc.name AS old_condition_name,
-    nc.name AS new_condition_name,
-    u.full_name AS performed_by_name
-FROM equipment_history h
-LEFT JOIN equipment e ON h.equipment_id = e.id
-LEFT JOIN premises op ON h.old_premise_id = op.id
-LEFT JOIN premises np ON h.new_premise_id = np.id
-LEFT JOIN employees oe ON h.old_responsible_id = oe.id
-LEFT JOIN employees ne ON h.new_responsible_id = ne.id
-LEFT JOIN condition_status oc ON h.old_condition_id = oc.id
-LEFT JOIN condition_status nc ON h.new_condition_id = nc.id
-LEFT JOIN users u ON h.performed_by = u.id
-ORDER BY h.change_date DESC;
-
-SELECT 'База данных v2.0 создана успешно!' AS msg;
-SELECT 'Пользователи: admin/123456, user1/123456' AS info;
+-- =============================================
+-- КОНЕЦ ФАЙЛА
+-- =============================================
